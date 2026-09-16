@@ -65,7 +65,8 @@ struct QuotaSummary: View {
     VStack(alignment: .leading, spacing: compact ? 14 : 20) {
       if !compact { title }
       if compact { compactHero } else { hero }
-      if !compact { facts }
+      // Le panneau ne reste que s'il a quelque chose à dire.
+      if !compact, availableResets != nil { facts }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }
@@ -157,17 +158,11 @@ struct QuotaSummary: View {
       .accessibilityLabel("Dernier quota connu ; mise à jour en attente")
   }
 
-  private var facts: some View {
-    VStack(spacing: 11) {
+  @ViewBuilder private var facts: some View {
+    if let available = availableResets {
       row(
-        "Par jour",
-        "\(forecast.dailyAllowance.formatted(.number.precision(.fractionLength(1)).locale(burnLocale)))%\u{00A0}/ jour",
-        help: "Ce que tu peux consommer chaque jour pour tenir jusqu'à la réinitialisation.")
-      if let available = availableResets {
-        row(
-          "Réinitialisations", "\(available)",
-          help: "Réinitialisations de limite Codex que tu peux utiliser maintenant.")
-      }
+        "Réinitialisations", "\(available)",
+        help: "Réinitialisations de limite Codex que tu peux utiliser maintenant.")
     }
   }
 

@@ -21,7 +21,11 @@ struct QuotaChart: View {
   private var scale: ClosedRange<Date> {
     quotaChartScale(range: range, forecast: forecast, now: now)
   }
-  private var gridDates: [Date] { quotaChartGridDates(range: range, forecast: forecast, now: now) }
+  private var gridDates: [Date] {
+    // Un trait situé avant le début de l'échelle se dessinerait hors du cadre.
+    quotaChartGridDates(range: range, forecast: forecast, now: now)
+      .filter { $0 >= scale.lowerBound && $0 <= scale.upperBound }
+  }
   private var showsForecast: Bool { range == .rte && forecast.projectedUse != nil }
   private var showsIdeal: Bool { range == .rte || range == .rtd }
   private var showsLatest: Bool { domain.contains(forecast.observedAt) }
