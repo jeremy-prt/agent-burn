@@ -5,6 +5,7 @@ struct NativeUsageView: View {
   @Environment(UsageStore.self) private var store
   let agent: String?
   @State private var modelSearch = ""
+  @State private var showsEconomics = false
   @State private var cursorScope = CursorModelScope.allModels
   private var own: AgentUsage? { store.summary?.agents.first { $0.agent == agent } }
   private var hasCursorCredits: Bool { cursorHasPromotionalCredits(store.summary?.cursorAccount) }
@@ -32,8 +33,8 @@ struct NativeUsageView: View {
           Image(systemName: "chart.bar.xaxis").font(.system(size: 26)).foregroundStyle(.tint)
         }
         VStack(alignment: .leading, spacing: 4) {
-          Text(agent.map(harnessName) ?? "All harnesses").font(.title2.weight(.semibold))
-          Text("\(store.period.label) · usage from your logs and connected providers")
+          Text(agent.map(harnessName) ?? "Tous les harnesses").font(.title2.weight(.semibold))
+          Text("\(store.period.label) · utilisation issue de tes logs et des fournisseurs connectés")
             .font(.subheadline).foregroundStyle(.secondary)
         }
         Spacer()
@@ -47,20 +48,32 @@ struct NativeUsageView: View {
 
         GroupBox {
           HStack(spacing: 24) {
-            SpendMetric(title: "Total spend", value: currency(cost), detail: "API-equivalent value")
+            SpendMetric(
+              title: "Dépense totale", value: currency(cost), detail: "Valeur équivalente API",
+              explanation:
+                "Ce que ces tokens auraient coûté au tarif API public, hors taxes. Ce n'est pas ce que tu paies : ton abonnement est facturé à part."
+            )
             Divider()
             SpendMetric(
-              title: "Tokens", value: tokens(tokenCount), detail: "Input, output and cache")
+              title: "Tokens", value: tokens(tokenCount), detail: "Entrée, sortie et cache",
+              explanation:
+                "Tokens envoyés et reçus sur la période, cache compris. Md = milliard, M = million, k = millier."
+            )
             Divider()
             SpendMetric(
-              title: "Avg tokens / $",
-              value: quotaTokensPerUnitLabel(
-                quotaTokensPerDollar(tokens: tokenCount, cost: cost), unit: "$") ?? "—",
-              detail: store.period.label)
+              title: "Tokens par \(currencySymbol)",
+              value: quotaTokensPerCurrencyLabel(
+                quotaTokensPerDollar(tokens: tokenCount, cost: cost)) ?? "—",
+              detail: store.period.label,
+              explanation:
+                "Combien de tokens tu obtiens pour 1 \(currencySymbol) de valeur équivalente API. Plus le chiffre est haut, plus tes tokens sont bon marché : tu utilises surtout du cache ou des modèles économiques."
+            )
             Divider()
             SpendMetric(
-              title: "Models", value: store.hasPeriodDetails ? models.count.formatted() : "—",
-              detail: agent.map(harnessName) ?? "Across all harnesses")
+              title: "Modèles", value: store.hasPeriodDetails ? models.count.formatted() : "—",
+              detail: agent.map(harnessName) ?? "Tous harnesses confondus",
+              explanation: "Nombre de modèles distincts que tu as utilisés sur la période."
+            )
           }.padding(12).frame(height: 85)
         }
         HStack(alignment: .top, spacing: 18) {
@@ -75,7 +88,7 @@ struct NativeUsageView: View {
           if agent == nil {
             GroupBox {
               VStack(alignment: .leading, spacing: 16) {
-                Text("By harness").font(.headline)
+                Text("Par harness").font(.headline)
                 ScrollView {
                   VStack(spacing: 16) {
                     ForEach(store.summary?.agents ?? []) { usage in
@@ -107,10 +120,11 @@ struct NativeUsageView: View {
           let models = recovered.models
         {
           GroupBox {
-            DisclosureGroup("Recovered model history · \(models.count) models") {
+            DisclosureGroup(
+              "Historique de modèles récupéré · \(models.count) modèle\(models.count > 1 ? "s" : "")") {
               VStack(alignment: .leading, spacing: 10) {
                 Text(
-                  "Snapshot: \(recovered.daily?.first?.date ?? "") – \(recovered.daily?.last?.date ?? ""). Current-cycle model data is shown above."
+                  "Instantané : \(recovered.daily?.first?.date ?? "") – \(recovered.daily?.last?.date ?? ""). Les modèles du cycle en cours sont affichés au-dessus."
                 )
                 .font(.caption).foregroundStyle(.secondary)
                 ModelUsageTable(models: models, total: recovered.totalCost).frame(height: 280)
@@ -118,67 +132,48 @@ struct NativeUsageView: View {
             }.padding(10)
           }
         }
-        if let breakdown = own?.tokenBreakdown {
-          GroupBox("Token breakdown · available source data") {
-            HStack(spacing: 20) {
-              SpendMetric(title: "Input", value: tokens(breakdown["input"] ?? 0))
-              SpendMetric(title: "Output", value: tokens(breakdown["output"] ?? 0))
-              SpendMetric(title: "Cache write", value: tokens(breakdown["cacheWrite"] ?? 0))
-              SpendMetric(title: "Cache read", value: tokens(breakdown["cacheRead"] ?? 0))
-            }.padding(12)
-          }
-        }
         if let agent, let report = store.reports[agent] {
           GroupBox {
-            DisclosureGroup("Subscription economics, token costs and weekly trends") {
+            DisclosureGroup(
+              "Économie de l'abonnement, coût des tokens et tendances hebdomadaires",
+              isExpanded: $showsEconomics
+            ) {
               VStack(alignment: .leading, spacing: 20) {
                 HStack {
-                  SpendMetric(title: "Past 30 days", value: currency(report.apiEquivalentPerMonth))
                   SpendMetric(
-                    title: "Monthly plan",
-                    value: report.pricePerMonth.map(currency) ?? "Unavailable")
+                    title: "30 derniers jours", value: currency(report.apiEquivalentPerMonth),
+                    explanation:
+                      "Valeur équivalente API de ton utilisation sur 30 jours, hors taxes."
+                  )
                   SpendMetric(
-                    title: "Subscription value",
+                    title: "Offre mensuelle",
+                    value: report.pricePerMonth.map(planPrice) ?? "Indisponible",
+                    detail: report.pricePerMonth == nil ? "" : planPriceTaxNote,
+                    explanation: planPriceExplanation)
+                  SpendMetric(
+                    title: "Valeur de l'abonnement",
                     value: report.economics.map {
-                      $0.valueMultiple.formatted(.number.precision(.fractionLength(2))) + "×"
-                    } ?? "Unavailable")
+                      $0.valueMultiple.formatted(
+                        .number.precision(.fractionLength(2)).locale(burnLocale)) + " ×"
+                    } ?? "Indisponible",
+                    explanation:
+                      "Valeur équivalente API divisée par le prix hors taxes de ton offre. À 9 ×, ton utilisation vaut neuf fois ce que tu paies."
+                  )
                 }
                 HarnessSpendDetails(report: report)
               }.padding(.top, 18)
             }.font(.headline).padding(10)
           }
         }
-        if let subscriptions = store.summary?.subscription?.agents, !subscriptions.isEmpty {
-          GroupBox("Subscriptions") {
-            HStack(spacing: 30) {
-              ForEach(subscriptions.filter { agent == nil || $0.agent == agent }) { subscription in
-                LabeledContent(harnessName(subscription.agent)) {
-                  Text(
-                    (subscription.plan ?? "Unknown plan") + " · "
-                      + (subscription.pricePerMonth.map(currency) ?? "Unknown price") + "/mo")
-                }
-              }
-            }.font(.subheadline).padding(10)
-          }
-        }
-        HStack {
-          Label(
-            "Spend is API-equivalent usage, not your subscription bill.", systemImage: "info.circle"
-          )
-          Spacer()
-          if let domain = store.chartDomain {
-            Text("\(quotaDayKey(domain.lowerBound)) – \(quotaDayKey(domain.upperBound))")
-          }
-        }.font(.caption).foregroundStyle(.secondary)
       } else {
         if let agent, ["codex", "claude"].contains(agent) { quotaSection(agent) }
         ContentUnavailableView {
           Label(
-            store.isLoading ? "Loading usage history" : "No report available",
+            store.isLoading ? "Chargement de l'historique" : "Aucun rapport disponible",
             systemImage: "chart.bar.xaxis")
         } description: {
           Text(
-            "Your usage will appear here when it is ready."
+            "Ton utilisation apparaîtra ici dès qu'elle sera prête."
           )
         }
         .frame(maxWidth: .infinity, minHeight: 380)
@@ -194,7 +189,10 @@ struct NativeUsageView: View {
     } else if agent == "claude" {
       ClaudeAccountView(
         account: store.summary?.claudeAccount,
-        plan: store.summary?.subscription?.agents.first { $0.agent == "claude" })
+        plan: store.summary?.subscription?.agents.first { $0.agent == "claude" },
+        unavailableReason: store.summary?.claudeAccountUnavailable)
+      // La courbe de rythme n'était branchée que sur Codex : Claude en a autant besoin.
+      quotaSection("claude")
     } else if agent == "codex" {
       quotaSection("codex")
     }
@@ -204,10 +202,10 @@ struct NativeUsageView: View {
     GroupBox {
       VStack(alignment: .leading, spacing: 12) {
         HStack {
-          Text("Models · available source data").font(.headline)
+          Text("Modèles · données disponibles").font(.headline)
           Text("\(models.count)").font(.caption).foregroundStyle(.secondary)
           Spacer()
-          TextField("Filter models", text: $modelSearch).textFieldStyle(.roundedBorder).frame(
+          TextField("Filtrer les modèles", text: $modelSearch).textFieldStyle(.roundedBorder).frame(
             width: 220)
         }.padding(.horizontal, 6)
         ModelUsageTable(
@@ -240,7 +238,7 @@ struct NativeUsageView: View {
             stale: !forecast.isFresh(at: store.quotaCheckDate)
               || store.quotaError(for: agent) != nil,
             staleHelp: store.quotaError(for: agent)
-              ?? "Showing the last known reading. Update pending.",
+              ?? "Dernière mesure connue affichée. Mise à jour en attente.",
             availableResets: style == .weekly
               ? store.reports[agent]?.resetCreditsAvailable : nil,
             rates: store.blendRates(for: agent),
@@ -266,12 +264,12 @@ struct NativeUsageView: View {
       if style == .promotionalCredits,
         (store.summary?.cursorAccount?.includedPercentUsed ?? 0) == 0
       {
-        Text("Included allowance is unused while promotional credits remain.")
+        Text("L'enveloppe incluse n'est pas entamée tant qu'il reste des crédits promotionnels.")
           .font(.caption).foregroundStyle(.secondary)
       }
     } else {
       Label(
-        "Quota unavailable. Spend and token history are still shown above.",
+        "Quota indisponible. L'historique de dépense et de tokens reste affiché au-dessus.",
         systemImage: "info.circle"
       )
       .font(.caption).foregroundStyle(.secondary)
@@ -285,17 +283,18 @@ private struct ModelUsageTable: View {
   @State private var order = [KeyPathComparator(\ModelUsage.totalCost, order: .reverse)]
   var body: some View {
     Table(models.sorted(using: order), sortOrder: $order) {
-      TableColumn("Model", value: \.model) { model in Text(model.model).help(model.model) }
+      TableColumn("Modèle", value: \.model) { model in Text(model.model).help(model.model) }
       TableColumn("Tokens", value: \.totalTokens) { model in
         Text(tokens(model.totalTokens)).monospacedDigit().foregroundStyle(.secondary)
       }.width(100)
-      TableColumn("Spend", value: \.totalCost) { model in
+      TableColumn("Dépense", value: \.totalCost) { model in
         Text(currency(model.totalCost)).monospacedDigit()
       }.width(100)
-      TableColumn("Share") { model in
+      TableColumn("Part") { model in
         Text(
           total > 0
-            ? (model.totalCost / total).formatted(.percent.precision(.fractionLength(1))) : "—"
+            ? (model.totalCost / total).formatted(
+              .percent.precision(.fractionLength(1)).locale(burnLocale)) : "—"
         )
         .monospacedDigit().foregroundStyle(.secondary)
       }.width(75)
@@ -348,7 +347,7 @@ private struct ActivityChart: View {
     VStack(alignment: .leading, spacing: 16) {
       HStack {
         Text(effective.spendTitle).font(.headline)
-        Picker("Granularity", selection: granularityBinding) {
+Picker("Granularité", selection: granularityBinding) {
           ForEach(SpendGranularity.allCases) { option in
             Text(option.label).tag(option)
           }
@@ -356,9 +355,9 @@ private struct ActivityChart: View {
         .pickerStyle(.segmented)
         .frame(width: 220)
         .labelsHidden()
-        .accessibilityLabel("Spend granularity")
+        .accessibilityLabel("Granularité de la dépense")
         if let scope {
-          Picker("Models", selection: scope) {
+          Picker("Modèles", selection: scope) {
             ForEach(CursorModelScope.allCases) { option in
               Text(option.label).tag(option)
             }
@@ -366,7 +365,7 @@ private struct ActivityChart: View {
           .pickerStyle(.segmented)
           .frame(maxWidth: 260)
           .labelsHidden()
-          .accessibilityLabel("Daily spend models")
+          .accessibilityLabel("Modèles de la dépense quotidienne")
         }
         Spacer()
         if let bucket = selectedBucket {
@@ -376,20 +375,20 @@ private struct ActivityChart: View {
           .font(.caption)
           .foregroundStyle(.secondary)
         } else {
-          Text("USD").font(.caption).foregroundStyle(.secondary)
+          Text(currencySymbol).font(.caption).foregroundStyle(.secondary)
         }
       }
       Chart {
         ForEach(buckets, id: \.usage.id) { bucket in
           BarMark(
-            x: .value("Day", bucket.date, unit: effective.unit),
-            y: .value("Spend", bucket.usage.cost)
+            x: .value("Jour", bucket.date, unit: effective.unit),
+            y: .value("Dépense", bucket.usage.cost * CurrentRate.shared.rate)
           )
           .foregroundStyle(color.gradient).cornerRadius(2)
           .accessibilityLabel(bucket.usage.date).accessibilityValue(currency(bucket.usage.cost))
         }
         if let selected {
-          RuleMark(x: .value("Day", selected)).foregroundStyle(.secondary.opacity(0.4))
+          RuleMark(x: .value("Jour", selected)).foregroundStyle(.secondary.opacity(0.4))
         }
       }
       .chartXSelection(value: $selected)

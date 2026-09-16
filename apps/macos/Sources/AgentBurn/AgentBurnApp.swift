@@ -18,29 +18,31 @@ enum AgentBurnMain {
 struct AgentBurnApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @State private var store: UsageStore
+  @Bindable private var appearance = AppAppearance.shared
 
   init() {
     let store = UsageStore()
     _store = State(initialValue: store)
     Task { await store.start() }
+    Task { await CurrencyRate.shared.refreshIfNeeded() }
   }
   var body: some Scene {
     Window("Agent Burn", id: "overview") {
-      DashboardView().environment(store)
+      DashboardView().environment(store).environment(\.locale, burnLocale)
     }
     .defaultSize(width: 1060, height: 780)
     .windowStyle(.titleBar)
     .windowToolbarStyle(.unified)
     .commands { UpdateCommands() }
-    MenuBarExtra {
-      MenuPopover().environment(store)
+    MenuBarExtra(isInserted: $appearance.menuBarVisible) {
+      MenuPopover().environment(store).environment(\.locale, burnLocale)
     } label: {
       // TimelineView in a MenuBarExtra label can continuously invalidate the status item.
       MenuBarLabel(
         remaining: store.remainingPercent, stale: store.quotaIsStale(at: store.quotaCheckDate))
     }
     .menuBarExtraStyle(.window)
-    Settings { SettingsView().environment(store) }
+    Settings { SettingsView().environment(store).environment(\.locale, burnLocale) }
   }
 }
 

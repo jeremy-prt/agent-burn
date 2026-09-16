@@ -12,7 +12,7 @@ struct QuotaChart: View {
   var compact = false
   var range = QuotaChartRange.rte
   var now = Date.now
-  var resetLabel = "Reset"
+  var resetLabel = "Réinitialisation"
   @State private var selected: Date?
   private var muted: Color { compact ? BurnTheme.quotaMuted : BurnTheme.muted }
   private var domain: ClosedRange<Date> {
@@ -37,15 +37,15 @@ struct QuotaChart: View {
     }
     .id(range.rawValue + domain.lowerBound.formatted() + domain.upperBound.formatted())
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel("Quota forecast")
+    .accessibilityLabel("Prévision de quota")
     .accessibilityValue(accessibilityValue)
-    .accessibilityHint("Adjust to move the cursor one day at a time.")
+    .accessibilityHint("Ajuste pour déplacer le curseur jour par jour.")
     .accessibilityAdjustableAction { direction in
       selected = quotaChartStep(
         from: cursor, forward: direction == .increment, marks: gridDates, domain: domain)
     }
     .help(
-      "Drag across the chart to read remaining quota at any time. Recorded holds until the next live reading, then steps with each drop. Missing collector gaps stay connected. Pace spreads the weekly limit evenly until reset. Forecast projects observed usage until the next reset. The recorded line and fill stay green while remaining is ahead of pace, and turn red where remaining falls behind."
+      "Fais glisser sur le graphique pour lire le quota restant à tout instant. La courbe enregistrée reste stable jusqu'à la mesure suivante, puis descend par palier. Les trous de relevé restent reliés. Le rythme répartit la limite hebdomadaire jusqu'à la réinitialisation. La prévision prolonge l'utilisation observée jusqu'à la prochaine réinitialisation. La courbe enregistrée reste verte tant que le restant est en avance sur le rythme, et passe au rouge dès qu'il décroche."
     )
   }
 
@@ -103,8 +103,8 @@ struct QuotaChart: View {
     ) { _, band in
       if band.isCurrent {
         RectangleMark(
-          xStart: .value("Start", band.start), xEnd: .value("End", band.end),
-          yStart: .value("Low", 0), yEnd: .value("High", 100)
+          xStart: .value("Début", band.start), xEnd: .value("Fin", band.end),
+          yStart: .value("Bas", 0), yEnd: .value("Haut", 100)
         )
         .foregroundStyle(color.opacity(0.07))
       }
@@ -119,8 +119,8 @@ struct QuotaChart: View {
       ForEach(Array(segment.points.enumerated()), id: \.offset) { _, point in
         AreaMark(
           x: .value("Date", point.date),
-          yStart: .value("Pace", point.ideal),
-          yEnd: .value("Recorded", point.recorded),
+          yStart: .value("Rythme", point.ideal),
+          yEnd: .value("Enregistré", point.recorded),
           series: .value("Series", "Pace delta \(index)")
         )
         .foregroundStyle((segment.ahead ? BurnTheme.ahead : BurnTheme.behind).opacity(0.28))
@@ -132,7 +132,7 @@ struct QuotaChart: View {
   @ChartContentBuilder private var recordedArea: some ChartContent {
     ForEach(Array(drawnSamples.enumerated()), id: \.offset) { _, sample in
       AreaMark(
-        x: .value("Date", sample.date), y: .value("Remaining", sample.remaining),
+        x: .value("Date", sample.date), y: .value("Restant", sample.remaining),
         series: .value("Series", "Recorded area")
       )
       .foregroundStyle(color.opacity(0.12))
@@ -144,7 +144,7 @@ struct QuotaChart: View {
     ForEach([domain.lowerBound, min(domain.upperBound, forecast.reset)], id: \.self) { date in
       LineMark(
         x: .value("Date", date),
-        y: .value("Remaining", quotaChartIdealRemaining(at: date, forecast: forecast)),
+        y: .value("Restant", quotaChartIdealRemaining(at: date, forecast: forecast)),
         series: .value("Series", "Pace")
       )
       .foregroundStyle(muted)
@@ -161,7 +161,7 @@ struct QuotaChart: View {
         ForEach(Array(segment.points.enumerated()), id: \.offset) { _, point in
           LineMark(
             x: .value("Date", point.date),
-            y: .value("Remaining", point.recorded),
+            y: .value("Restant", point.recorded),
             series: .value("Series", "Recorded \(index)")
           )
           .foregroundStyle(quotaChartRecordedStroke(ahead: segment.ahead, color: color))
@@ -178,13 +178,13 @@ struct QuotaChart: View {
       ) { index, segment in
         ForEach(Array(segment.enumerated()), id: \.offset) { _, sample in
           LineMark(
-            x: .value("Date", sample.date), y: .value("Remaining", sample.remaining),
+            x: .value("Date", sample.date), y: .value("Restant", sample.remaining),
             series: .value("Series", "Recorded \(index)")
           )
           .foregroundStyle(color).lineStyle(StrokeStyle(lineWidth: 2.5))
           .interpolationMethod(.linear)
           if segment.count == 1 {
-            PointMark(x: .value("Date", sample.date), y: .value("Remaining", sample.remaining))
+            PointMark(x: .value("Date", sample.date), y: .value("Restant", sample.remaining))
               .foregroundStyle(color).symbolSize(18)
           }
         }
@@ -196,7 +196,7 @@ struct QuotaChart: View {
     ForEach([0, 1], id: \.self) { index in
       LineMark(
         x: .value("Date", index == 0 ? forecast.observedAt : forecast.projectedEnd),
-        y: .value("Remaining", index == 0 ? forecast.remaining : forecast.projectedRemaining),
+        y: .value("Restant", index == 0 ? forecast.remaining : forecast.projectedRemaining),
         series: .value("Series", "Forecast")
       )
       .foregroundStyle(forecastStroke.opacity(0.8))
@@ -218,14 +218,15 @@ struct QuotaChart: View {
         .foregroundStyle(color.opacity(selected == nil ? 0.35 : 0.5))
         .lineStyle(StrokeStyle(lineWidth: 1))
       if let value = reading.value {
-        PointMark(x: .value("Date", cursor), y: .value("Remaining", value))
+        PointMark(x: .value("Date", cursor), y: .value("Restant", value))
           .foregroundStyle(reading.projected ? cursorStroke.opacity(0.6) : cursorStroke)
           .symbolSize(reading.projected ? 30 : 48)
           .annotation(
             position: .top, spacing: compact ? 4 : 8,
             overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))
           ) {
-            deltaBadge
+            // Au repos, le panneau de gauche porte déjà ces deux chiffres.
+            if selected != nil { deltaBadge }
           }
       }
     }
@@ -255,8 +256,9 @@ struct QuotaChart: View {
   private func badgeDelta(_ delta: Double?) -> String? {
     guard let delta else { return nil }
     if compact {
-      if abs(delta) < 0.05 { return "pace" }
-      let magnitude = abs(delta).formatted(.number.precision(.fractionLength(1)))
+      if abs(delta) < 0.05 { return "rythme" }
+      let magnitude = abs(delta).formatted(
+        .number.precision(.fractionLength(1)).locale(burnLocale))
       return delta > 0 ? "+\(magnitude)%" : "−\(magnitude)%"
     }
     return quotaChartDeltaText(delta)
@@ -277,12 +279,13 @@ struct QuotaChart: View {
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  private var cursorLabel: some View {
-    Text(
-      (reading.projected ? "Projected · " : selected == nil ? "Latest · " : "")
-        + quotaChartCursorLabel(cursor, range: range)
-    )
-    .font(.system(size: 12)).foregroundStyle(muted).monospacedDigit()
+  @ViewBuilder private var cursorLabel: some View {
+    if selected != nil {
+      Text(
+        (reading.projected ? "Projeté · " : "") + quotaChartCursorLabel(cursor, range: range)
+      )
+      .font(.system(size: 12)).foregroundStyle(muted).monospacedDigit()
+    }
   }
 
   private var cursorStroke: Color {
@@ -299,23 +302,27 @@ struct QuotaChart: View {
 
   private var headerSeries: some View {
     HStack(alignment: .firstTextBaseline, spacing: compact ? 12 : 16) {
-      series("Recorded", reading.recorded, color: cursorStroke, dashed: false)
-      if showsForecast { series("Forecast", reading.forecast, color: forecastStroke, dashed: true) }
-      if showsIdeal { series("Pace", reading.ideal, color: muted, dashed: true) }
+      series("Ta conso", color: cursorStroke, dashed: false)
+      if showsForecast { series("Projection", color: forecastStroke, dashed: true) }
+      if showsIdeal { series("Rythme idéal", color: muted, dashed: true) }
+      InfoButton(
+        text:
+          "Ta conso est ton quota restant réel. Le rythme idéal est la ligne droite qui épuise pile ton quota au moment de la réinitialisation. Au-dessus, tu as de la marge et tu peux pousser ; en dessous, tu seras bloqué avant la fin de la semaine. La projection prolonge ton rythme actuel."
+      )
     }
   }
 
   private var accessibilityValue: String {
     var parts = [
-      "\(quotaChartPercentLabel(reading.value)) remaining at \(quotaChartCursorLabel(cursor, range: range))"
+      "\(quotaChartPercentLabel(reading.value)) restants au \(quotaChartCursorLabel(cursor, range: range))"
     ]
-    if let delta = quotaChartDeltaText(reading.paceDelta) { parts.append(delta + " pace") }
-    if reading.projected { parts.append("Projected") }
+    if let delta = quotaChartDeltaText(reading.paceDelta) { parts.append(delta + " sur le rythme") }
+    if reading.projected { parts.append("Projeté") }
     parts.append(range.label)
     return parts.joined(separator: ". ") + "."
   }
 
-  private func series(_ title: String, _ value: Double?, color: Color, dashed: Bool) -> some View {
+  private func series(_ title: String, color: Color, dashed: Bool) -> some View {
     HStack(spacing: 6) {
       Path { path in
         path.move(to: .zero)
@@ -324,7 +331,6 @@ struct QuotaChart: View {
       .stroke(color, style: StrokeStyle(lineWidth: 2, dash: dashed ? [3, 3] : []))
       .frame(width: 14, height: 1)
       Text(title).foregroundStyle(muted)
-      Text(quotaChartPercentLabel(value)).foregroundStyle(BurnTheme.ink).monospacedDigit()
     }
     .font(.system(size: 12))
   }

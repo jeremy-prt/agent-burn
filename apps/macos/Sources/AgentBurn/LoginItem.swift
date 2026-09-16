@@ -38,7 +38,7 @@ import SwiftUI
     do {
       if enabled { try register() } else { try await unregister() }
     } catch {
-      errorMessage = "Could not change login behavior: \(error.localizedDescription)"
+      errorMessage = "Impossible de modifier le lancement au démarrage : \(error.localizedDescription)"
     }
   }
 }
@@ -47,22 +47,22 @@ struct LoginItemSettings: View {
   @State private var loginItem = LoginItem()
 
   var body: some View {
-    Section("Startup") {
+    Section("Démarrage") {
       Toggle(
-        "Launch at login",
+        "Lancer à l'ouverture de session",
         isOn: Binding(
           get: { loginItem.isEnabled },
           set: { enabled in Task { await loginItem.setEnabled(enabled) } })
       )
       .disabled(loginItem.isUpdating)
       Text(
-        "Start Agent Burn automatically when you sign in to your Mac. Your menu-bar-only preference is respected."
+        "Démarre Agent Burn automatiquement à l'ouverture de ta session macOS. Ton réglage « barre des menus uniquement » est respecté."
       )
       .font(.caption).foregroundStyle(.secondary)
       if loginItem.requiresApproval {
-        Text("Allow Agent Burn in System Settings to finish enabling launch at login.")
+        Text("Autorise Agent Burn dans les Réglages Système pour terminer l'activation du lancement au démarrage.")
           .font(.caption).foregroundStyle(.secondary)
-        Button("Open Login Items Settings…") { SMAppService.openSystemSettingsLoginItems() }
+        Button("Ouvrir les réglages d'ouverture…") { SMAppService.openSystemSettingsLoginItems() }
       }
       if let error = loginItem.errorMessage {
         Text(error).font(.caption).foregroundStyle(.red)

@@ -5,6 +5,6 @@
   <key>BundleProgram</key><string>Contents/MacOS/AgentBurnQuotaCollector</string>
   <key>ProgramArguments</key><array><string>Contents/MacOS/AgentBurnQuotaCollector</string></array>
   <key>RunAtLoad</key><true/>
-  <key>StartInterval</key><integer>60</integer>
+  <key>StartInterval</key><integer>600</integer>
   <key>ProcessType</key><string>Background</string>
 </dict></plist>

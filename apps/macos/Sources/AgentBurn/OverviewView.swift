@@ -8,9 +8,9 @@ struct OverviewView: View {
     VStack(alignment: .leading, spacing: compact ? 20 : 28) {
       HStack(alignment: .center) {
         VStack(alignment: .leading, spacing: 6) {
-          Text(compact ? "All your harnesses" : "Usage at a glance")
+          Text(compact ? "Tous tes harnesses" : "Utilisation en un coup d'œil")
             .font(.system(size: compact ? 21 : 28, weight: .semibold))
-          Text("One place for every agent.").font(.system(size: 13)).foregroundStyle(
+          Text("Un seul endroit pour tous tes agents.").font(.system(size: 13)).foregroundStyle(
             BurnTheme.muted)
         }
         Spacer()
@@ -19,28 +19,28 @@ struct OverviewView: View {
       if let error = store.errors["summary"] { ReportNotice(message: error) }
       if let report = store.summary {
         HStack(spacing: 0) {
-          metric("API-equivalent usage", value: currency(report.totals.totalCost))
+          metric("Valeur équivalente API", value: currency(report.totals.totalCost))
           if !compact {
             Rectangle().fill(BurnTheme.line).frame(width: 1, height: 44).padding(.horizontal, 28)
           } else {
             Spacer()
           }
-          metric("Tokens processed", value: tokens(report.totals.totalTokens))
+          metric("Tokens traités", value: tokens(report.totals.totalTokens))
           if !compact {
             Rectangle().fill(BurnTheme.line).frame(width: 1, height: 44).padding(.horizontal, 28)
-            metric("Active harnesses", value: String(report.agents.count))
+            metric("Harnesses actifs", value: String(report.agents.count))
           }
         }
         .padding(.vertical, compact ? 8 : 18)
         if !compact, let daily = report.daily, !daily.isEmpty {
-          DailySpendChart(title: "Daily usage", days: daily, domain: store.chartDomain)
+          DailySpendChart(title: "Utilisation par jour", days: daily, domain: store.chartDomain)
         }
         VStack(alignment: .leading, spacing: 18) {
-          SectionLabel(title: "Usage by harness", detail: store.period.label)
+          SectionLabel(title: "Utilisation par harness", detail: store.period.label)
           if report.agents.isEmpty {
             ReportNotice(
               message:
-                "No local usage in this period. Run an agent session or choose a longer date range."
+                "Aucune utilisation locale sur cette période. Lance une session d'agent ou choisis une plage plus large."
             )
           }
           ForEach(report.agents) { agent in
@@ -50,7 +50,9 @@ struct OverviewView: View {
         if !report.models.isEmpty {
           Rectangle().fill(BurnTheme.line).frame(height: 1)
           VStack(alignment: .leading, spacing: 0) {
-            SectionLabel(title: "Model breakdown", detail: "\(report.models.count) models")
+            SectionLabel(
+              title: "Détail par modèle",
+              detail: "\(report.models.count) modèle\(report.models.count > 1 ? "s" : "")")
               .padding(.bottom, 18)
             ForEach(Array(report.models.prefix(compact ? 3 : report.models.count))) { model in
               HStack(spacing: 14) {
@@ -67,29 +69,31 @@ struct OverviewView: View {
         }
         if !compact, let subscription = report.subscription, !subscription.agents.isEmpty {
           VStack(alignment: .leading, spacing: 14) {
-            SectionLabel(title: "Subscriptions", detail: "Monthly plan prices")
+            SectionLabel(
+              title: "Abonnements", detail: "Prix mensuels \(planPriceTaxNote)")
             ForEach(subscription.agents) { agent in
               HStack {
                 Text(harnessName(agent.agent))
-                Text(agent.plan ?? "Unknown plan").foregroundStyle(BurnTheme.muted)
+                Text(agent.plan ?? "Offre inconnue").foregroundStyle(BurnTheme.muted)
                 Spacer()
-                Text(agent.pricePerMonth.map(currency) ?? "Price unavailable")
+                Text(agent.pricePerMonth.map(planPrice) ?? "Prix indisponible")
+                  .help(planPriceExplanation)
               }.font(.system(size: 12))
             }
           }
         }
         Label(
-          "API-equivalent usage estimates token value, not your subscription bill.",
+          "La valeur équivalente API estime le coût des tokens, pas le montant de ton abonnement.",
           systemImage: "info.circle"
         )
         .font(.system(size: 11)).foregroundStyle(BurnTheme.muted)
         .fixedSize(horizontal: false, vertical: true)
       } else {
         VStack(alignment: .leading, spacing: 12) {
-          Text(store.isLoading ? "Gathering your local usage…" : "Connect your usage")
+          Text(store.isLoading ? "Collecte de ton utilisation locale…" : "Connecte ton utilisation")
             .font(.system(size: 20, weight: .medium))
           Text(
-            "Agent Burn reads the same local harness logs as the CLI. Choose the executable in Settings if it isn't detected automatically."
+            "Agent Burn lit les mêmes logs locaux que le CLI. Choisis l'exécutable dans les Réglages s'il n'est pas détecté automatiquement."
           )
           .font(.system(size: 13)).foregroundStyle(BurnTheme.muted)
         }.frame(maxWidth: .infinity, minHeight: 240, alignment: .leading)
@@ -127,7 +131,7 @@ struct OverviewView: View {
               width: geometry.size.width * max(0, min(1, share)))
           }
         }.frame(height: 4).accessibilityLabel(
-          "\(Int(share * 100)) percent of \(totals.totalCost > 0 ? "usage value" : "tokens")")
+          "\(Int(share * 100)) pour cent de \(totals.totalCost > 0 ? "la valeur d'utilisation" : "des tokens")")
       }
     }.monospacedDigit().padding(.vertical, 5)
   }

@@ -21,13 +21,13 @@ struct HarnessView: View {
         HarnessIcon(agent: agent)
         VStack(alignment: .leading, spacing: 3) {
           Text(harnessName(agent)).font(.system(size: 15, weight: .semibold))
-          Text(store.reports[agent]?.plan ?? "Subscription usage")
+          Text(store.reports[agent]?.plan ?? "Utilisation de l'abonnement")
             .font(.system(size: 11)).foregroundStyle(BurnTheme.muted)
         }
         Spacer()
         StatusBadge(
           text: store.errors[agent] != nil
-            ? "Needs attention" : store.offline ? "Cached" : "CLI snapshot",
+            ? "À vérifier" : store.offline ? "En cache" : "Relevé CLI",
           color: store.errors[agent] != nil ? BurnTheme.accent : color)
       }
       if let error = store.errors[agent] { ReportNotice(message: error) }
@@ -35,24 +35,34 @@ struct HarnessView: View {
       if let report = store.reports[agent] {
         HStack {
           SpendMetric(
-            title: "Total spend", value: currency(report.apiEquivalentPerMonth),
-            detail: "Past 30 days · API-equivalent")
+            title: "Dépense totale", value: currency(report.apiEquivalentPerMonth),
+            detail: "30 derniers jours · équivalent API",
+            explanation:
+              "Ce que ces tokens auraient coûté au tarif API public, hors taxes. Ce n'est pas ce que tu paies."
+          )
           if let price = report.pricePerMonth {
-            SpendMetric(title: "Monthly plan", value: currency(price), detail: report.plan ?? "")
+            SpendMetric(
+              title: "Offre mensuelle", value: planPrice(price),
+              detail: [report.plan, planPriceTaxNote].compactMap { $0 }.joined(separator: " · "),
+              explanation: planPriceExplanation)
           }
           if !compact, let economics = report.economics {
             SpendMetric(
-              title: "Subscription value",
-              value: "\(economics.valueMultiple.formatted(.number.precision(.fractionLength(2))))×",
-              detail: "Usage / monthly price")
+              title: "Valeur de l'abonnement",
+              value:
+                "\(economics.valueMultiple.formatted(.number.precision(.fractionLength(2)).locale(burnLocale))) ×",
+              detail: "Utilisation / prix mensuel",
+              explanation:
+                "Valeur équivalente API divisée par le prix hors taxes de ton offre. À 9 ×, ton utilisation vaut neuf fois ce que tu paies."
+            )
           }
         }
         if !compact, let economics = report.economics {
           HStack {
-            Text("API-equivalent minus plan: \(currency(economics.subsidyPerMonth))")
+            Text("Équivalent API moins l'offre : \(currency(economics.subsidyPerMonth))")
             Spacer()
             Text(
-              "API pricing discount: \(economics.discountPercent.formatted(.number.precision(.fractionLength(1))))%"
+              "Remise sur le tarif API : \(economics.discountPercent.formatted(.number.precision(.fractionLength(1)).locale(burnLocale)))%"
             )
           }.font(.system(size: 11)).foregroundStyle(BurnTheme.muted)
         }
@@ -65,10 +75,10 @@ struct HarnessView: View {
         } else {
           HStack(alignment: .top, spacing: 36) {
             VStack(alignment: .leading, spacing: 14) {
-              Text("Weekly limit").font(.system(size: 12)).foregroundStyle(BurnTheme.muted)
+              Text("Limite hebdomadaire").font(.system(size: 12)).foregroundStyle(BurnTheme.muted)
               quotaHeader(forecast)
               if !forecast.isLive {
-                Text("\(currency(forecast.window.apiEquivalentSpent)) used this cycle")
+                Text("\(currency(forecast.window.apiEquivalentSpent)) utilisés sur ce cycle")
                   .font(.system(size: 12)).foregroundStyle(BurnTheme.muted)
               }
             }.frame(width: 280, alignment: .leading)
@@ -80,21 +90,21 @@ struct HarnessView: View {
           .shortWindow
         {
           HStack {
-            Text("\(short.label) limit").foregroundStyle(BurnTheme.muted)
+            Text("Limite \(short.label)").foregroundStyle(BurnTheme.muted)
             Spacer()
             Text(
-              "\(max(0, 100 - short.usedPercent).formatted(.number.precision(.fractionLength(0))))% remaining"
+              "\(max(0, 100 - short.usedPercent).formatted(.number.precision(.fractionLength(0)).locale(burnLocale)))% restants"
             )
           }.font(.system(size: 12))
         }
       } else {
         VStack(alignment: .leading, spacing: 10) {
-          Text(store.isLoading ? "Reading your usage…" : "Quota unavailable")
+          Text(store.isLoading ? "Lecture de ton utilisation…" : "Quota indisponible")
             .font(.system(size: 24, weight: .semibold))
           Text(
             store.isLoading
-              ? "Loading local logs and subscription limits. This can take a moment."
-              : "Sign in to this harness and run a session to record limits. Your available spend data appears below."
+              ? "Chargement des logs locaux et des limites d'abonnement. Cela peut prendre un moment."
+              : "Connecte-toi à ce harness et lance une session pour enregistrer les limites. Tes données de dépense disponibles s'affichent ci-dessous."
           )
           .font(.system(size: 13)).foregroundStyle(BurnTheme.muted)
           .fixedSize(horizontal: false, vertical: true)
@@ -103,7 +113,7 @@ struct HarnessView: View {
       if let report = store.reports[agent], !report.topModels.isEmpty {
         Rectangle().fill(BurnTheme.line).frame(height: 1)
         VStack(alignment: .leading, spacing: 14) {
-          SectionLabel(title: "Model usage", detail: "API-equivalent · past 30 days")
+          SectionLabel(title: "Utilisation par modèle", detail: "Équivalent API · 30 derniers jours")
           ForEach(Array(report.topModels.prefix(compact ? 2 : 6))) { model in
             HStack {
               Text(model.model).lineLimit(1).help(model.model)
@@ -125,15 +135,17 @@ struct HarnessView: View {
         Text(forecast.remaining.formatted(.number.precision(.fractionLength(0))))
           .font(.system(size: compact ? 52 : 64, weight: .medium, design: .rounded))
           .monospacedDigit()
-        Text("% remaining").font(.system(size: 16)).foregroundStyle(BurnTheme.muted)
+        Text("% restants").font(.system(size: 16)).foregroundStyle(BurnTheme.muted)
         Spacer()
-        if compact { Text("Weekly limit").font(.system(size: 11)).foregroundStyle(BurnTheme.muted) }
+        if compact {
+          Text("Limite hebdomadaire").font(.system(size: 11)).foregroundStyle(BurnTheme.muted)
+        }
       }
       VStack(alignment: .leading, spacing: 5) {
         Label(
           forecast.remaining == 0
-            ? "Limit reached"
-            : forecast.daysEarly > 0.1 ? "A little ahead of pace" : "Room to keep building",
+            ? "Limite atteinte"
+            : forecast.daysEarly > 0.1 ? "Un peu au-dessus du rythme" : "De la marge pour continuer",
           systemImage: forecast.daysEarly > 0.1
             ? "gauge.with.dots.needle.67percent" : "checkmark.circle"
         )
@@ -141,10 +153,10 @@ struct HarnessView: View {
         .foregroundStyle(forecast.daysEarly > 0.1 ? BurnTheme.accent : BurnTheme.green)
         Text(
           forecast.projectedUse == nil
-            ? "A forecast will appear once this cycle has recorded usage."
+            ? "Une prévision apparaîtra dès que ce cycle aura enregistré de l'utilisation."
             : forecast.daysEarly > 0.1
-              ? "At this pace, your quota may run out \(forecast.daysEarly.formatted(.number.precision(.fractionLength(1)))) days early."
-              : "Your current pace should carry you through the reset."
+              ? "À ce rythme, ton quota pourrait s'épuiser \(forecast.daysEarly.formatted(.number.precision(.fractionLength(1)).locale(burnLocale))) jours trop tôt."
+              : "Ton rythme actuel devrait te mener jusqu'à la réinitialisation."
         )
         .font(.system(size: 12)).foregroundStyle(BurnTheme.muted)
         .fixedSize(horizontal: false, vertical: true)
@@ -155,23 +167,25 @@ struct HarnessView: View {
   private func resetDetails(_ forecast: Forecast) -> some View {
     VStack(spacing: 12) {
       HStack {
-        Label("Resets around", systemImage: "clock").foregroundStyle(BurnTheme.muted)
+        Label("Réinitialisation vers", systemImage: "clock").foregroundStyle(BurnTheme.muted)
         Spacer()
         Text(forecast.reset.formatted(.dateTime.month(.abbreviated).day().hour().minute()))
       }
       HStack {
-        Label("Recorded resets", systemImage: "arrow.counterclockwise").foregroundStyle(
+        Label("Réinitialisations enregistrées", systemImage: "arrow.counterclockwise").foregroundStyle(
           BurnTheme.muted)
         Spacer()
         Text(resetSummary(store.resets(for: agent)))
       }
       .help(
-        "Scheduled resets happen near the cycle end. A possible reset is a remaining jump mid-cycle, which can be a manual reset or a provider correction."
+        "Les réinitialisations planifiées ont lieu en fin de cycle. Une réinitialisation possible est un saut du restant en milieu de cycle : réinitialisation manuelle ou correction du fournisseur."
       )
       HStack {
-        Label("Suggested pace", systemImage: "speedometer").foregroundStyle(BurnTheme.muted)
+        Label("Rythme conseillé", systemImage: "speedometer").foregroundStyle(BurnTheme.muted)
         Spacer()
-        Text("\(forecast.dailyAllowance.formatted(.number.precision(.fractionLength(1))))% / day")
+        Text(
+          "\(forecast.dailyAllowance.formatted(.number.precision(.fractionLength(1)).locale(burnLocale)))% / jour"
+        )
           .foregroundStyle(color)
       }
     }

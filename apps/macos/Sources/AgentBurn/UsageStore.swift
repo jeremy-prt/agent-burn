@@ -8,15 +8,15 @@ enum UsagePeriod: String, CaseIterable, Identifiable {
   }
   var label: String {
     switch self {
-    case .today: "Today"
-    case .all: "All time"
-    case .yesterday: "Yesterday"
-    case .rtd: "Reset to date"
-    case .wtd: "Week to date"
-    case .ytd: "Year to date"
-    case .week: "Last 7 days"
-    case .mtd: "This month"
-    case .month: "Last 30 days"
+    case .today: "Aujourd'hui"
+    case .all: "Depuis le début"
+    case .yesterday: "Hier"
+    case .rtd: "Depuis la réinitialisation"
+    case .wtd: "Semaine en cours"
+    case .ytd: "Année en cours"
+    case .week: "7 derniers jours"
+    case .mtd: "Mois en cours"
+    case .month: "30 derniers jours"
     }
   }
 }
@@ -46,7 +46,7 @@ final class UsageStore {
       changePeriod()
     }
   }
-  var selection = "summary" {
+  var selection = "claude" {
     didSet {
       guard oldValue != selection else { return }
       changePeriod()
@@ -103,7 +103,10 @@ final class UsageStore {
         home: FileManager.default.homeDirectoryForCurrentUser.path,
         inherited: ProcessInfo.processInfo.environment["CODEX_HOME"])
     offline = defaults.bool(forKey: "offline")
-    refreshMinutes = max(1, defaults.integer(forKey: "refreshMinutes"))
+    // Anthropic limite l'endpoint de quotas : une minute par défaut suffisait
+    // à se faire jeter en 429. Le relevé de fond couvre la fréquence fine.
+    let storedRefresh = defaults.integer(forKey: "refreshMinutes")
+    refreshMinutes = storedRefresh > 0 ? storedRefresh : 15
     quotaSource = QuotaSource(rawValue: defaults.string(forKey: "quotaSource") ?? "") ?? .codex
     quotaChartRange =
       QuotaChartRange(rawValue: defaults.string(forKey: "quotaChartRange") ?? "") ?? .rte
@@ -147,7 +150,7 @@ final class UsageStore {
     } catch {
       archiveWritable = false
       errors["archive"] =
-        "Metrics history could not be read or saved. Existing files have been preserved."
+        "L'historique des métriques n'a pas pu être lu ou enregistré. Les fichiers existants sont conservés."
     }
     reloadQuotas()
     publishSummary()
@@ -166,7 +169,7 @@ final class UsageStore {
       errors["quotaHistory"] = nil
     } catch {
       errors["quotaHistory"] =
-        "Quota history could not be read. The last available readings are preserved."
+        "L'historique des quotas n'a pas pu être lu. Les dernières mesures disponibles sont conservées."
     }
   }
 
@@ -177,7 +180,7 @@ final class UsageStore {
     if defaults.object(forKey: "backgroundQuotas") as? Bool != false {
       do { try await QuotaService.registerForCurrentBundle() } catch {
         errors["quotaService"] =
-          "Background collection could not start. Enable it in Settings → Background quota history."
+          "Le relevé en arrière-plan n'a pas pu démarrer. Active-le dans Réglages → Historique des quotas en arrière-plan."
       }
     }
     async let quotas: () = watchQuotas()
@@ -187,14 +190,19 @@ final class UsageStore {
   }
 
   private func configureQuotaCollector() {
-    guard configuredQuotaSource != quotaSourceKey else { return }
+    let directory = cacheURL.deletingLastPathComponent()
+    let config = directory.appendingPathComponent("quota-collector.json")
+    // Ne pas se fier au seul souvenir en mémoire : si le fichier a disparu,
+    // le collecteur en arrière-plan s'arrête sans que l'app s'en aperçoive.
+    let present = FileManager.default.fileExists(atPath: config.path)
+    guard configuredQuotaSource != quotaSourceKey || !present else { return }
     do {
       try QuotaCollectorConfig(customPath: customPath, codexHomes: codexHomes)
-        .save(directory: cacheURL.deletingLastPathComponent())
+        .save(directory: directory)
       configuredQuotaSource = quotaSourceKey
       errors["quotaConfig"] = nil
     } catch {
-      errors["quotaConfig"] = "Background quota settings could not be saved."
+      errors["quotaConfig"] = "Les réglages de quota en arrière-plan n'ont pas pu être enregistrés."
     }
   }
 
@@ -210,8 +218,8 @@ final class UsageStore {
       } else if backgroundEnabled {
         errors["quotaService"] =
           status == .requiresApproval
-          ? "Allow Agent Burn background activity in System Settings. Quotas are collected while this app is open."
-          : "Background collection is unavailable. Enable it in Settings to continue collecting after quitting."
+          ? "Autorise l'activité en arrière-plan d'Agent Burn dans les Réglages Système. Les quotas sont relevés tant que l'app est ouverte."
+          : "Le relevé en arrière-plan est indisponible. Active-le dans les Réglages pour continuer à relever après la fermeture."
       } else {
         errors["quotaService"] = nil
       }
@@ -251,7 +259,7 @@ final class UsageStore {
       errors["quotaCollector"] = nil
     } catch {
       errors["quotaCollector"] =
-        "Quota collection could not save its readings. Existing history is preserved."
+        "Le relevé des quotas n'a pas pu enregistrer ses mesures. L'historique existant est conservé."
     }
     reloadQuotas()
   }
@@ -381,7 +389,7 @@ final class UsageStore {
           try MetricsArchiveFile(url: archiveURL).save(archive)
           errors["archive"] = nil
         } catch {
-          errors["archive"] = "Daily metrics could not be saved. Check the history file location."
+          errors["archive"] = "Les métriques quotidiennes n'ont pas pu être enregistrées. Vérifie l'emplacement du fichier d'historique."
         }
       }
       summaryErrors[query.cacheKey] = nil
@@ -420,7 +428,7 @@ final class UsageStore {
         try ReportCacheFile(directory: cacheURL.deletingLastPathComponent()).save(cache)
       }
       errors["cache"] = nil
-    } catch { errors["cache"] = "Unable to save report history on this Mac." }
+    } catch { errors["cache"] = "Impossible d'enregistrer l'historique des rapports sur ce Mac." }
   }
 
   var chartDomain: ClosedRange<Date>? {
@@ -475,7 +483,7 @@ final class UsageStore {
       errors["quotaHistory"] = nil
     } catch {
       errors["quotaHistory"] =
-        "Quota history could not be saved. Existing readings are preserved."
+        "L'historique des quotas n'a pas pu être enregistré. Les mesures existantes sont conservées."
     }
   }
 

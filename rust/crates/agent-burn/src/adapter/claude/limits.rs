@@ -1,8 +1,8 @@
-use std::{fs, time::Duration};
+use std::{fs, sync::OnceLock, time::Duration};
 
 use serde_json::{Value, json};
 
-use crate::{TimestampMs, home, parse_ts_timestamp};
+use crate::{TimestampMs, home, parse_ts_timestamp, utc_now};
 
 const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const FETCH_TIMEOUT_SECONDS: u64 = 5;
@@ -41,36 +41,108 @@ pub(crate) struct ClaudeUsageLimits {
     pub(crate) extra_usage: Option<ExtraUsage>,
 }
 
-/// Fetch the signed-in account's live usage limits from Anthropic, mirroring
-/// the call Claude Code's status line makes. Returns `None` when offline, when
-/// no OAuth token is available, or on any network error (never fatal).
-pub(crate) fn usage_limits(offline: bool) -> Option<ClaudeUsageLimits> {
-    if offline {
-        return None;
+/// Why live Claude meters are missing, so callers can say something useful
+/// instead of a single catch-all message.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Unavailable {
+    Offline,
+    NoToken,
+    TokenExpired,
+    /// Anthropic throttles this endpoint; polling it too often earns a 429.
+    RateLimited,
+    Unreachable,
+    Empty,
+}
+
+impl Unavailable {
+    /// Stable key consumed by the macOS app, which owns the wording.
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Offline => "offline",
+            Self::NoToken => "no-token",
+            Self::TokenExpired => "token-expired",
+            Self::RateLimited => "rate-limited",
+            Self::Unreachable => "unreachable",
+            Self::Empty => "empty",
+        }
     }
-    let token = oauth_token()?;
+
+    pub(crate) fn message(self) -> &'static str {
+        match self {
+            Self::Offline => "no live limits available (cached mode)",
+            Self::NoToken => "no live limits available (no signed-in token)",
+            Self::TokenExpired => "no live limits available (token expired, sign in again)",
+            Self::RateLimited => "no live limits available (rate limited by Anthropic, retry later)",
+            Self::Unreachable => "no live limits available (request failed)",
+            Self::Empty => "no live limits reported for this account",
+        }
+    }
+}
+
+/// Fetch the signed-in account's live usage limits from Anthropic, mirroring
+/// the call Claude Code's status line makes. Never fatal: every failure maps to
+/// an `Unavailable` reason.
+/// One HTTP call per process. A single `summary --value` run asks for these
+/// limits from several places, and Anthropic throttles this endpoint hard
+/// enough that repeating the request inside one run earns a 429.
+static CACHED: OnceLock<Result<ClaudeUsageLimits, Unavailable>> = OnceLock::new();
+
+pub(crate) fn usage_limits_result(offline: bool) -> Result<ClaudeUsageLimits, Unavailable> {
+    CACHED.get_or_init(|| fetch_limits(offline)).clone()
+}
+
+fn fetch_limits(offline: bool) -> Result<ClaudeUsageLimits, Unavailable> {
+    if offline {
+        return Err(Unavailable::Offline);
+    }
+    let credentials = read_credentials().ok_or(Unavailable::NoToken)?;
+    let token = token_from_credentials(&credentials).ok_or(Unavailable::NoToken)?;
+    if expired(&credentials) {
+        return Err(Unavailable::TokenExpired);
+    }
     fetch_usage_limits(&token)
 }
 
-/// Current Claude meters for `summary --value --json`, omitted when offline or empty.
-pub(crate) fn load_account(offline: bool) -> Option<Value> {
-    let limits = usage_limits(offline)?;
-    if limits == ClaudeUsageLimits::default() {
-        return None;
-    }
-    Some(account_json(&limits))
+pub(crate) fn usage_limits(offline: bool) -> Option<ClaudeUsageLimits> {
+    usage_limits_result(offline).ok()
 }
 
-fn oauth_token() -> Option<String> {
-    #[cfg(target_os = "macos")]
-    if let Some(token) = keychain_token() {
-        return Some(token);
+/// Current Claude meters for `summary --value --json`, or why they are missing.
+pub(crate) fn load_account_result(offline: bool) -> Result<Value, Unavailable> {
+    let limits = usage_limits_result(offline)?;
+    if limits == ClaudeUsageLimits::default() {
+        return Err(Unavailable::Empty);
     }
-    file_token()
+    Ok(account_json(&limits))
+}
+
+/// The raw credentials blob, from the keychain first and the file as a fallback.
+fn read_credentials() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    if let Some(json) = keychain_credentials() {
+        return Some(json);
+    }
+    file_credentials()
+}
+
+/// An access token past its expiry is refused with a 401, so name that case.
+fn expired(credentials: &str) -> bool {
+    let Some(expires_at) = expiry_from_credentials(credentials) else {
+        return false;
+    };
+    expires_at <= utc_now().as_millis()
+}
+
+fn expiry_from_credentials(json: &str) -> Option<i64> {
+    serde_json::from_str::<Value>(json.trim())
+        .ok()?
+        .get("claudeAiOauth")?
+        .get("expiresAt")?
+        .as_i64()
 }
 
 #[cfg(target_os = "macos")]
-fn keychain_token() -> Option<String> {
+fn keychain_credentials() -> Option<String> {
     let output = std::process::Command::new("security")
         .args([
             "find-generic-password",
@@ -83,13 +155,12 @@ fn keychain_token() -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    let json = String::from_utf8(output.stdout).ok()?;
-    token_from_credentials(&json)
+    String::from_utf8(output.stdout).ok()
 }
 
-fn file_token() -> Option<String> {
+fn file_credentials() -> Option<String> {
     let path = home::home_dir()?.join(".claude").join(".credentials.json");
-    token_from_credentials(&fs::read_to_string(path).ok()?)
+    fs::read_to_string(path).ok()
 }
 
 fn token_from_credentials(json: &str) -> Option<String> {
@@ -101,7 +172,7 @@ fn token_from_credentials(json: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-fn fetch_usage_limits(token: &str) -> Option<ClaudeUsageLimits> {
+fn fetch_usage_limits(token: &str) -> Result<ClaudeUsageLimits, Unavailable> {
     let agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(FETCH_TIMEOUT_SECONDS)))
         .build()
@@ -116,17 +187,20 @@ fn fetch_usage_limits(token: &str) -> Option<ClaudeUsageLimits> {
             concat!("claude-code/", env!("CARGO_PKG_VERSION")),
         )
         .call()
-        .ok()?;
-    if response.status().as_u16() != 200 {
-        return None;
+        .map_err(|_| Unavailable::Unreachable)?;
+    match response.status().as_u16() {
+        200 => {}
+        429 => return Err(Unavailable::RateLimited),
+        401 | 403 => return Err(Unavailable::TokenExpired),
+        _ => return Err(Unavailable::Unreachable),
     }
     let body = response
         .body_mut()
         .with_config()
         .limit(FETCH_MAX_BYTES)
         .read_to_string()
-        .ok()?;
-    parse_usage_limits(&body)
+        .map_err(|_| Unavailable::Unreachable)?;
+    parse_usage_limits(&body).ok_or(Unavailable::Empty)
 }
 
 fn parse_usage_limits(body: &str) -> Option<ClaudeUsageLimits> {

@@ -19,7 +19,7 @@ struct QuotaFreshnessView: View {
             : forecast.isFresh(at: context.date) && error == nil ? .green : .orange)
         if !compact || !forecast.isFresh(at: context.date) || error != nil {
           Text(
-            "Measured \(forecast.observedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute().second()))"
+            "Mesuré le \(forecast.observedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute().second()))"
           )
           .foregroundStyle(compact ? BurnTheme.quotaMuted : .secondary)
         }

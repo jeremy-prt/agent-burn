@@ -98,27 +98,28 @@ struct RefreshFooter: View {
       Circle().fill(store.errors[source] == nil ? BurnTheme.green : BurnTheme.accent).frame(
         width: 5, height: 5)
       if let date = store.updated[source] {
-        Text(store.errors[source] == nil ? "Updated" : "Last successful update")
+        Text(
+          store.errors[source] == nil
+            ? "Mis à jour il y a" : "Dernière mise à jour réussie il y a")
         Text(date, style: .relative)
-        Text("ago")
       } else if source == "summary", store.summary != nil {
-        Text("Saved usage")
+        Text("Utilisation enregistrée")
       } else if store.isLoading {
-        Text("Updating usage…")
+        Text("Mise à jour de l'utilisation…")
       } else {
-        Text("Waiting for usage")
+        Text("En attente de données")
       }
       Spacer()
       Text(bundleVersionText())
         .monospacedDigit()
-        .accessibilityLabel("App version")
+        .accessibilityLabel("Version de l'app")
       Button {
         Task { await store.refresh() }
       } label: {
         Image(systemName: "arrow.clockwise")
       }
       .buttonStyle(.plain).disabled(store.isLoading)
-      .help("Refresh usage").accessibilityLabel("Refresh usage")
+      .help("Actualiser l'utilisation").accessibilityLabel("Actualiser l'utilisation")
     }
     .font(.system(size: 11)).foregroundStyle(compact ? BurnTheme.quotaMuted : BurnTheme.muted)
   }

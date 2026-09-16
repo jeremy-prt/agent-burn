@@ -29,13 +29,13 @@ import SwiftUI
 struct UpdateSettings: View {
   @ObservedObject private var updater = AppUpdater.shared
   var body: some View {
-    Section("App updates") {
+    Section("Mises à jour") {
       Toggle(
-        "Automatically check for updates",
+        "Vérifier automatiquement les mises à jour",
         isOn: Binding(
           get: { updater.automaticallyChecks }, set: { updater.automaticallyChecks = $0 }))
-      Button("Check for Updates…") { updater.check() }.disabled(!updater.canCheck)
-      Text("Signed updates are delivered from the open-source GitHub releases.")
+      Button("Vérifier les mises à jour…") { updater.check() }.disabled(!updater.canCheck)
+      Text("Les mises à jour signées proviennent des releases GitHub du projet open source.")
         .font(.caption).foregroundStyle(.secondary)
     }
   }
@@ -45,7 +45,7 @@ struct UpdateCommands: Commands {
   @ObservedObject private var updater = AppUpdater.shared
   var body: some Commands {
     CommandGroup(after: .appInfo) {
-      Button("Check for Updates…") { updater.check() }.disabled(!updater.canCheck)
+      Button("Vérifier les mises à jour…") { updater.check() }.disabled(!updater.canCheck)
     }
   }
 }

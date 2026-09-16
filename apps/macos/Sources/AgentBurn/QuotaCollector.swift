@@ -56,7 +56,7 @@ enum QuotaCollector {
             else { throw CLIError.invalidOutput }
             return (agent, reading, nil)
           } catch {
-            return (agent, nil, "Live quota could not be collected. The last reading is preserved.")
+            return (agent, nil, "Le quota en direct n'a pas pu être relevé. La dernière mesure est conservée.")
           }
         }
       }
@@ -84,7 +84,7 @@ enum QuotaCollector {
         } catch {
           return (
             "cursor", nil,
-            "Live Cursor credits could not be collected. The last reading is preserved."
+            "Les crédits Cursor en direct n'ont pas pu être relevés. La dernière mesure est conservée."
           )
         }
       }
@@ -97,7 +97,7 @@ enum QuotaCollector {
         }
         // Persist each provider immediately, even if the other hangs or this process crashes.
         do { try file.save(history) } catch {
-          FileHandle.standardError.write(Data("Quota history could not be saved.\n".utf8))
+          FileHandle.standardError.write(Data("L'historique des quotas n'a pas pu être enregistré.\n".utf8))
         }
       }
     }

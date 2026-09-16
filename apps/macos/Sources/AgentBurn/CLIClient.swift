@@ -6,13 +6,13 @@ enum CLIError: LocalizedError {
   case timedOut, invalidOutput
   var errorDescription: String? {
     switch self {
-    case .missing: "Agent Burn CLI not found. Choose the native agent-burn executable in Settings."
+    case .missing: "CLI Agent Burn introuvable. Choisis l'exécutable agent-burn natif dans les Réglages."
     case .failed(let code):
-      "Agent Burn exited with status \(code). Check your CLI configuration and harness sign-in, then retry."
+      "Agent Burn s'est arrêté avec le code \(code). Vérifie la configuration du CLI et ta connexion au harness, puis réessaie."
     case .timedOut:
-      "Usage could not be updated in time. Please try again shortly."
+      "L'utilisation n'a pas pu être mise à jour dans les temps. Réessaie dans un instant."
     case .invalidOutput:
-      "The CLI returned an unsupported report. Rebuild the app with the current Agent Burn CLI."
+      "Le CLI a renvoyé un rapport non pris en charge. Recompile l'app avec le CLI Agent Burn actuel."
     }
   }
 }

@@ -11,7 +11,7 @@ struct CompactHarnessView: View {
         HarnessIcon(agent: agent, size: 22)
         Text(harnessName(agent)).font(.system(size: 13, weight: .semibold))
         Spacer()
-        Text(store.reports[agent]?.plan ?? "Subscription")
+        Text(store.reports[agent]?.plan ?? "Abonnement")
           .font(.system(size: 12)).foregroundStyle(BurnTheme.quotaMuted).lineLimit(1)
       }
 
@@ -25,7 +25,7 @@ struct CompactHarnessView: View {
           stale: !forecast.isFresh(at: store.quotaCheckDate)
             || store.quotaError(for: agent) != nil,
           staleHelp: store.quotaError(for: agent)
-            ?? "Showing the last known reading. Update pending.",
+            ?? "Dernière mesure connue affichée. Mise à jour en attente.",
           compact: true,
           availableResets: store.reports[agent]?.resetCreditsAvailable,
           rates: store.blendRates(for: agent)
@@ -41,18 +41,18 @@ struct CompactHarnessView: View {
           .shortWindow
         {
           detail(
-            "\(short.label) limit",
-            "\(max(0, 100 - short.usedPercent).formatted(.number.precision(.fractionLength(0))))% remaining"
+            "Limite \(short.label)",
+            "\(max(0, 100 - short.usedPercent).formatted(.number.precision(.fractionLength(0)).locale(burnLocale)))% restants"
           )
         }
       } else {
         VStack(alignment: .leading, spacing: 10) {
-          Text(store.isLoading ? "Reading usage…" : "Quota unavailable")
+          Text(store.isLoading ? "Lecture de l'utilisation…" : "Quota indisponible")
             .font(.system(size: 24, weight: .semibold))
           Text(
             store.isLoading
-              ? "Loading your subscription limits."
-              : "Sign in to \(harnessName(agent)) and run a session, then refresh."
+              ? "Chargement de tes limites d'abonnement."
+              : "Connecte-toi à \(harnessName(agent)), lance une session, puis actualise."
           )
           .font(.system(size: 13)).foregroundStyle(BurnTheme.quotaMuted)
           .fixedSize(horizontal: false, vertical: true)
@@ -65,21 +65,23 @@ struct CompactHarnessView: View {
 
       if let report = store.reports[agent] {
         let rates = store.blendRates(for: agent)
-        DisclosureGroup("Usage details", isExpanded: $showsDetails) {
+        DisclosureGroup("Détail de l'utilisation", isExpanded: $showsDetails) {
           VStack(alignment: .leading, spacing: 12) {
-            detail("API-equivalent · 30 days", currency(report.apiEquivalentPerMonth))
-            if let price = report.pricePerMonth { detail("Monthly plan", currency(price)) }
+            detail("Équivalent API · 30 jours", currency(report.apiEquivalentPerMonth))
+            if let price = report.pricePerMonth {
+              detail("Offre mensuelle \(planPriceTaxNote)", planPrice(price))
+            }
             if let forecast = store.forecast(for: agent) {
               detail(
-                "Suggested daily pace",
-                "\(forecast.dailyAllowance.formatted(.number.precision(.fractionLength(1))))%\u{00A0}/ day"
+                "Rythme quotidien conseillé",
+                "\(forecast.dailyAllowance.formatted(.number.precision(.fractionLength(1)).locale(burnLocale)))%\u{00A0}/ jour"
               )
             }
             if let dollars = quotaDollarsPerPercentLabel(rates?.dollarsPerPercent) {
-              detail("Avg $ / %", dollars)
+              detail("Moyenne \(currencySymbol) / %", dollars)
             }
-            if let tokensPer = quotaTokensPerUnitLabel(rates?.tokensPerDollar, unit: "$") {
-              detail("Avg tokens / $", tokensPer)
+            if let tokensPer = quotaTokensPerCurrencyLabel(rates?.tokensPerDollar) {
+              detail("Tokens par \(currencySymbol)", tokensPer)
             }
             ForEach(Array(report.topModels.prefix(2))) { model in
               detail(model.model, currency(model.cost))

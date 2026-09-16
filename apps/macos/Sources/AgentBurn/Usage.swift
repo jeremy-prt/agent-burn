@@ -8,6 +8,8 @@ struct SummaryReport: Codable, Sendable {
   let subscription: SubscriptionReport?
   var cursorAccount: CursorAccount? = nil
   var claudeAccount: ClaudeAccount? = nil
+  /// Code renvoyé par le CLI quand les compteurs Claude en direct manquent.
+  var claudeAccountUnavailable: String? = nil
 }
 
 struct Totals: Codable, Sendable {
@@ -133,8 +135,8 @@ enum CursorModelScope: String, CaseIterable, Identifiable {
   var id: String { rawValue }
   var label: String {
     switch self {
-    case .allModels: "All models"
-    case .cursorModels: "Cursor models"
+    case .allModels: "Tous les modèles"
+    case .cursorModels: "Modèles Cursor"
     }
   }
 }
@@ -144,16 +146,16 @@ enum SpendGranularity: String, CaseIterable, Identifiable {
   var id: String { rawValue }
   var label: String {
     switch self {
-    case .daily: "Daily"
-    case .weekly: "Weekly"
-    case .monthly: "Monthly"
+    case .daily: "Jour"
+    case .weekly: "Semaine"
+    case .monthly: "Mois"
     }
   }
   var spendTitle: String {
     switch self {
-    case .daily: "Daily spend"
-    case .weekly: "Weekly spend"
-    case .monthly: "Monthly spend"
+    case .daily: "Dépense par jour"
+    case .weekly: "Dépense par semaine"
+    case .monthly: "Dépense par mois"
     }
   }
   var unit: Calendar.Component {
@@ -273,40 +275,40 @@ enum QuotaMeterStyle {
   case weekly, promotionalCredits
   var title: String {
     switch self {
-    case .weekly: "Weekly quota"
-    case .promotionalCredits: "Promotional credits"
+    case .weekly: "Quota hebdomadaire"
+    case .promotionalCredits: "Crédits promotionnels"
     }
   }
   var remainingCaption: String {
     switch self {
-    case .weekly: "Weekly remaining"
-    case .promotionalCredits: "Credits remaining"
+    case .weekly: "Utilisé cette semaine"
+    case .promotionalCredits: "Crédits utilisés"
     }
   }
   var resetTitle: String {
     switch self {
-    case .weekly: "Reset in"
-    case .promotionalCredits: "Expires in"
+    case .weekly: "Réinitialisation dans"
+    case .promotionalCredits: "Expiration dans"
     }
   }
   var resetHelp: String {
     switch self {
-    case .weekly: "Time left in this weekly limit window."
-    case .promotionalCredits: "Time left before promotional credits expire."
+    case .weekly: "Temps restant dans la fenêtre de limite hebdomadaire."
+    case .promotionalCredits: "Temps restant avant l'expiration des crédits promotionnels."
     }
   }
   var usedHelp: String {
     switch self {
     case .weekly:
-      "The current weekly limit started at this time. Used percent is measured against that full limit."
+      "La limite hebdomadaire en cours a démarré à cette date. Le pourcentage utilisé est mesuré sur cette limite complète."
     case .promotionalCredits:
-      "Used percent is measured against the promotional credit grant. The window runs until those credits expire."
+      "Le pourcentage utilisé est mesuré sur la dotation de crédits promotionnels. La fenêtre court jusqu'à leur expiration."
     }
   }
   var chartResetLabel: String {
     switch self {
-    case .weekly: "Reset"
-    case .promotionalCredits: "Expires"
+    case .weekly: "Réinitialisation"
+    case .promotionalCredits: "Expiration"
     }
   }
 }
@@ -324,12 +326,14 @@ struct Forecast {
   var isLive = false
   func isFresh(at date: Date) -> Bool {
     let age = date.timeIntervalSince(observedAt)
-    return isLive && window.isValid && age >= 0 && age <= 90 && date < reset
+    // Le relevé de fond passe toutes les 10 minutes : la marge doit suivre.
+    return isLive && window.isValid && age >= 0 && age <= 720 && date < reset
   }
   func freshnessLabel(at date: Date, failed: Bool = false) -> String {
-    if failed { return "Update failed · retrying" }
-    if !isLive { return "Saved reading" }
-    return isFresh(at: date) ? "Live · every minute" : "Stale · waiting for update"
+    if failed { return "Échec de la mise à jour · nouvelle tentative" }
+    if !isLive { return "Mesure enregistrée" }
+    return isFresh(at: date)
+      ? "En direct · toutes les 10 min" : "Périmé · en attente de mise à jour"
   }
   var remaining: Double { max(0, min(100, 100 - window.usedPercent)) }
   var duration: TimeInterval { max(1, window.windowMinutes * 60) }
@@ -364,11 +368,11 @@ enum QuotaChartRange: String, CaseIterable, Identifiable {
   var id: String { rawValue }
   var label: String {
     switch self {
-    case .rte: "Until reset"
-    case .rtd: "Reset to today"
-    case .today: "Today"
-    case .week: "Last 7 days"
-    case .month: "Last 30 days"
+    case .rte: "Jusqu'à la réinitialisation"
+    case .rtd: "Depuis la réinitialisation"
+    case .today: "Aujourd'hui"
+    case .week: "7 derniers jours"
+    case .month: "30 derniers jours"
     }
   }
   var connectsRecordedGaps: Bool { true }
@@ -590,9 +594,9 @@ private func quotaChartDeltaPoints(samples: [QuotaSample], forecast: Forecast)
 
 func quotaChartDeltaText(_ delta: Double?) -> String? {
   guard let delta else { return nil }
-  if abs(delta) < 0.05 { return "On pace" }
-  let magnitude = abs(delta).formatted(.number.precision(.fractionLength(1)))
-  return delta > 0 ? "+\(magnitude)% ahead" : "−\(magnitude)% behind"
+  if abs(delta) < 0.05 { return "Dans le rythme" }
+  let magnitude = abs(delta).formatted(.number.precision(.fractionLength(1)).locale(burnLocale))
+  return delta > 0 ? "+\(magnitude)% d'avance" : "−\(magnitude)% de retard"
 }
 
 func quotaChartStep(from date: Date, forward: Bool, marks: [Date], domain: ClosedRange<Date>)
@@ -687,22 +691,22 @@ func quotaUsedPercent(_ forecast: Forecast) -> Double {
 }
 
 func quotaLimitSummary(_ forecast: Forecast) -> String {
-  "Limit: \(quotaDateText(forecast.start)) · \(quotaUsedPercent(forecast).formatted(.number.precision(.fractionLength(0))))% used"
+  "Limite : \(quotaDateText(forecast.start)) · \(quotaUsedPercent(forecast).formatted(.number.precision(.fractionLength(0)).locale(burnLocale)))% utilisés"
 }
 
 func quotaTimeLeft(_ forecast: Forecast, now: Date) -> String {
   let seconds = max(0, forecast.reset.timeIntervalSince(min(now, forecast.reset)))
   let days = Int(seconds / 86_400)
   let hours = Int((seconds - Double(days) * 86_400) / 3_600)
-  if days > 0 && hours > 0 { return "\(days)d \(hours)h" }
-  if days > 0 { return "\(days)d" }
-  if hours > 0 { return "\(hours)h" }
-  return "<1h"
+  if days > 0 && hours > 0 { return "\(days) j \(hours) h" }
+  if days > 0 { return "\(days) j" }
+  if hours > 0 { return "\(hours) h" }
+  return "< 1 h"
 }
 
 func quotaTimeRemaining(_ forecast: Forecast, now: Date) -> String {
   let left = quotaTimeLeft(forecast, now: now)
-  return left == "<1h" ? "Less than 1h left" : "\(left) left"
+  return left == "< 1 h" ? "Moins d'une heure restante" : "\(left) restantes"
 }
 
 func quotaChartDrawnSamples(
@@ -783,29 +787,30 @@ func quotaResetCounts(_ resets: [QuotaReset]) -> QuotaResetCounts {
 
 func quotaAvailableResetsLabel(_ count: Int?) -> String? {
   guard let count else { return nil }
-  return count == 1 ? "1 reset available" : "\(count) resets available"
+  return count == 1 ? "1 réinitialisation disponible" : "\(count) réinitialisations disponibles"
 }
 
 func quotaCompactStats(_ forecast: Forecast, availableResets: Int? = nil) -> String {
   let used =
-    "\(quotaUsedPercent(forecast).formatted(.number.precision(.fractionLength(1))))% used"
+    "\(quotaUsedPercent(forecast).formatted(.number.precision(.fractionLength(1)).locale(burnLocale)))% utilisés"
   let daily =
-    "\(forecast.dailyAllowance.formatted(.number.precision(.fractionLength(1))))%\u{00A0}/ day"
+    "\(forecast.dailyAllowance.formatted(.number.precision(.fractionLength(1)).locale(burnLocale)))%\u{00A0}/ jour"
   guard let resets = quotaAvailableResetsLabel(availableResets) else { return "\(used) · \(daily)" }
   return "\(used) · \(daily) · \(resets)"
 }
 
 func quotaResetDetail(_ counts: QuotaResetCounts) -> String {
-  if counts.recorded == 0 { return "None this cycle" }
-  if counts.scheduled == 0 { return "\(counts.possible) possible" }
-  if counts.possible == 0 { return "\(counts.scheduled) scheduled" }
-  return "\(counts.scheduled) scheduled · \(counts.possible) possible"
+  if counts.recorded == 0 { return "Aucune sur ce cycle" }
+  if counts.scheduled == 0 { return "\(counts.possible) possible(s)" }
+  if counts.possible == 0 { return "\(counts.scheduled) planifiée(s)" }
+  return "\(counts.scheduled) planifiée(s) · \(counts.possible) possible(s)"
 }
 
 func resetSummary(_ resets: [QuotaReset]) -> String {
   let counts = quotaResetCounts(resets)
-  guard counts.recorded > 0 else { return "No quota resets recorded" }
-  return "\(counts.recorded) recorded · \(counts.scheduled) scheduled, \(counts.possible) possible"
+  guard counts.recorded > 0 else { return "Aucune réinitialisation de quota enregistrée" }
+  return
+    "\(counts.recorded) enregistrée(s) · \(counts.scheduled) planifiée(s), \(counts.possible) possible(s)"
 }
 
 enum QuotaSource: String, CaseIterable, Identifiable {
@@ -905,7 +910,7 @@ private func cursorGrantUsedPercent(_ account: CursorAccount) -> Double? {
 }
 
 func menuBarQuotaText(_ remaining: Double?, stale: Bool = false) -> String {
-  remaining.map { "\(Int($0))%" + (stale ? " · stale" : "") } ?? "Burn"
+  remaining.map { "\(Int($0))%" + (stale ? " · périmé" : "") } ?? "Burn"
 }
 
 func appVersionText(short: String, build: String = "") -> String {
@@ -1022,14 +1027,78 @@ func quotaTokensPerUnitLabel(_ value: Double?, unit: String) -> String? {
   return "\(tokens(UInt64(value.rounded()))) / \(unit)"
 }
 
+/// Nombre de tokens par unité de devise d'affichage, à partir d'un ratio par dollar.
+func quotaTokensPerCurrencyLabel(_ tokensPerDollar: Double?) -> String? {
+  guard let tokensPerDollar, tokensPerDollar.isFinite, tokensPerDollar > 0,
+    CurrentRate.shared.rate > 0
+  else { return nil }
+  return quotaTokensPerUnitLabel(tokensPerDollar / CurrentRate.shared.rate, unit: currencySymbol)
+}
+
+/// Symbole de la devise d'affichage, tel que la locale française l'écrit.
+let currencySymbol = burnLocale.currencySymbol ?? CurrencyRate.code
+
+/// Locale d'affichage : l'app est en français, indépendamment des réglages système.
+let burnLocale = Locale(identifier: "fr_FR")
+
+/// Formate un montant reçu en dollars dans la devise d'affichage.
 func currency(_ value: Double) -> String {
-  value.formatted(.currency(code: "USD").precision(.fractionLength(2)))
+  (value * CurrentRate.shared.rate)
+    .formatted(
+      .currency(code: CurrencyRate.code).precision(.fractionLength(2)).locale(burnLocale))
+}
+
+/// Prix d'un abonnement, TVA comprise quand l'option est active.
+///
+/// Les tarifs remontés par le CLI sont les prix catalogue en dollars hors
+/// taxes ; ce n'est pas le montant prélevé.
+func planPrice(_ usd: Double) -> String {
+  currency(usd * CurrentRate.shared.vatMultiplier)
+}
+
+/// Mention à accoler à un prix d'abonnement : « TTC » ou « HT ».
+var planPriceTaxNote: String { CurrentRate.shared.vatMultiplier > 1 ? "TTC" : "HT" }
+
+/// Phrase d'explication du prix d'abonnement affichée au survol.
+var planPriceExplanation: String {
+  let multiplier = CurrentRate.shared.vatMultiplier
+  guard multiplier > 1 else {
+    return
+      "Prix catalogue de ton offre, hors taxes, converti en \(CurrencyRate.code). Active la TVA dans les Réglages pour voir le montant réellement prélevé."
+  }
+  let percent = ((multiplier - 1) * 100).formatted(
+    .number.precision(.fractionLength(0...1)).locale(burnLocale))
+  return
+    "Prix de ton offre TVA comprise (\(percent) %), converti depuis le tarif catalogue en dollars hors taxes."
+}
+
+/// Formate un montant déjà exprimé dans la devise d'affichage, sans reconvertir.
+func currencyConverted(_ value: Double) -> String {
+  value.formatted(
+    .currency(code: CurrencyRate.code).precision(.fractionLength(2)).locale(burnLocale))
 }
 
 func tokens(_ value: UInt64) -> String {
   let number = Double(value)
-  if number >= 1_000_000_000 { return String(format: "%.2fB", number / 1_000_000_000) }
-  if number >= 1_000_000 { return String(format: "%.1fM", number / 1_000_000) }
-  if number >= 1000 { return String(format: "%.1fK", number / 1000) }
-  return value.formatted()
+  func short(_ scaled: Double, _ digits: Int, _ suffix: String) -> String {
+    scaled.formatted(.number.precision(.fractionLength(digits)).locale(burnLocale)) + suffix
+  }
+  if number >= 1_000_000_000 { return short(number / 1_000_000_000, 2, " Md") }
+  if number >= 1_000_000 { return short(number / 1_000_000, 1, " M") }
+  if number >= 1000 { return short(number / 1000, 1, " k") }
+  return value.formatted(.number.locale(burnLocale))
+}
+
+
+/// Explique pourquoi les compteurs Claude en direct manquent, et quoi faire.
+func claudeAccountUnavailableMessage(_ code: String?) -> String {
+  switch code {
+  case "offline": "Mode cache activé : décoche-le dans les Réglages."
+  case "no-token": "Pas de session Claude Code : lance `claude /login`."
+  case "token-expired": "Session expirée : relance `claude /login`."
+  case "rate-limited": "Anthropic limite les appels, prochain relevé dans 10 min."
+  case "unreachable": "Anthropic injoignable."
+  case "empty": "Aucun compteur renvoyé pour ce compte."
+  default: "Compteurs en direct indisponibles."
+  }
 }

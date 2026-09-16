@@ -23,9 +23,9 @@ struct QuotaCollectionSettings: View {
     unregister: { try await QuotaService.service.unregister() })
 
   var body: some View {
-    Section("Background quota history") {
+    Section("Historique des quotas en arrière-plan") {
       Toggle(
-        "Collect quotas every minute",
+        "Relever les quotas toutes les 10 minutes",
         isOn: Binding(
           get: { item.isEnabled },
           set: { value in
@@ -35,13 +35,13 @@ struct QuotaCollectionSettings: View {
       )
       .disabled(item.isUpdating)
       Text(
-        "Records live Codex, Claude, and Cursor promotional-credit quotas even after you quit Agent Burn. Collection resumes when your Mac wakes or you sign in. Saved readings remain available during outages."
+        "Alimente la courbe de rythme même quand l'app est fermée. Anthropic limite ces appels : dix minutes est l'intervalle qui tient sans se faire bloquer."
       )
       .font(.caption).foregroundStyle(.secondary)
       if item.requiresApproval {
-        Text("Allow Agent Burn to run in the background in System Settings to enable collection.")
+        Text("Autorise Agent Burn à s'exécuter en arrière-plan dans les Réglages Système pour activer le relevé.")
           .font(.caption).foregroundStyle(.secondary)
-        Button("Open Login Items Settings…") { SMAppService.openSystemSettingsLoginItems() }
+        Button("Ouvrir les réglages d'ouverture…") { SMAppService.openSystemSettingsLoginItems() }
       }
       if let error = item.errorMessage {
         Text(error).font(.caption).foregroundStyle(.red)

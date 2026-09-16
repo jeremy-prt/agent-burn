@@ -14,6 +14,15 @@ import SwiftUI
     }
   }
 
+  /// Présence de l'icône Agent Burn dans la barre des menus.
+  var menuBarVisible: Bool {
+    didSet {
+      defaults.set(menuBarVisible, forKey: "menuBarVisible")
+      // Sans icône dans la barre des menus, l'app doit rester joignable par le Dock.
+      if !menuBarVisible, menuBarOnly { menuBarOnly = false }
+    }
+  }
+
   init(
     defaults: UserDefaults = .standard,
     applyPolicy: @escaping (NSApplication.ActivationPolicy) -> Void = {
@@ -23,6 +32,7 @@ import SwiftUI
     self.defaults = defaults
     self.applyPolicy = applyPolicy
     menuBarOnly = defaults.bool(forKey: "menuBarOnly")
+    menuBarVisible = defaults.object(forKey: "menuBarVisible") as? Bool ?? true
   }
 
   func apply() { applyPolicy(menuBarOnly ? .accessory : .regular) }
@@ -50,16 +60,26 @@ import SwiftUI
     }
   }
 
-  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+  /// Sans icône dans la barre des menus, la fenêtre est le seul accès à l'app :
+  /// la fermer doit donc quitter, comme pour n'importe quelle app à fenêtre.
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    !AppAppearance.shared.menuBarVisible
+  }
 }
 
 struct AppearanceSettings: View {
   @Bindable private var appearance = AppAppearance.shared
   var body: some View {
-    Section("Appearance") {
-      Toggle("Menu bar only", isOn: $appearance.menuBarOnly)
+    Section("Apparence") {
+      Toggle("Icône dans la barre des menus", isOn: $appearance.menuBarVisible)
       Text(
-        "Hide Agent Burn from the Dock and Command-Tab. Open the dashboard and Settings from the menu bar. This choice is remembered when the app restarts."
+        "Affiche Agent Burn et son quota restant dans la barre des menus. Décoche pour n'utiliser que la fenêtre du tableau de bord."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+      Toggle("Barre des menus uniquement", isOn: $appearance.menuBarOnly)
+        .disabled(!appearance.menuBarVisible)
+      Text(
+        "Masque Agent Burn du Dock et de Command-Tab : le tableau de bord et les réglages s'ouvrent alors depuis la barre des menus. Ce choix est conservé au redémarrage de l'app."
       )
       .font(.caption).foregroundStyle(.secondary)
     }

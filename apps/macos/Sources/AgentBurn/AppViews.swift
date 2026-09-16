@@ -13,11 +13,11 @@ struct MenuPopover: View {
           .foregroundStyle(BurnTheme.ink)
         Spacer()
         SettingsLink { Image(systemName: "gearshape") }
-          .buttonStyle(.plain).foregroundStyle(BurnTheme.muted).help("Settings")
-          .accessibilityLabel("Settings")
+          .buttonStyle(.plain).foregroundStyle(BurnTheme.muted).help("Réglages")
+          .accessibilityLabel("Réglages")
           .frame(minWidth: 24, minHeight: 24)
       }.padding(.horizontal, 22).padding(.top, 19).padding(.bottom, 17)
-      HarnessTabs(selection: $store.selection, compact: true)
+      HarnessTabs(selection: $store.selection)
         .padding(4)
         .padding(.horizontal, 18).padding(.bottom, 20)
       ScrollView {
@@ -41,7 +41,7 @@ struct MenuPopover: View {
             NSApp.activate(ignoringOtherApps: true)
           } label: {
             HStack {
-              Text("Open dashboard")
+              Text("Ouvrir le tableau de bord")
               Spacer()
               Image(systemName: "arrow.up.right")
             }.font(.system(size: 12, weight: .medium))
@@ -53,8 +53,8 @@ struct MenuPopover: View {
           } label: {
             Image(systemName: "power")
           }
-          .buttonStyle(.plain).foregroundStyle(BurnTheme.muted).help("Quit Agent Burn")
-          .accessibilityLabel("Quit Agent Burn").padding(.leading, 8)
+          .buttonStyle(.plain).foregroundStyle(BurnTheme.muted).help("Quitter Agent Burn")
+          .accessibilityLabel("Quitter Agent Burn").padding(.leading, 8)
         }
       }.padding(18)
     }
@@ -78,9 +78,6 @@ struct DashboardView: View {
     .frame(minWidth: 900, minHeight: 650)
     .background(BurnTheme.background)
     .toolbar {
-      ToolbarItem(placement: .navigation) {
-        QuotaSourceMenu()
-      }
       ToolbarItem(placement: .principal) {
         HarnessTabs(selection: $store.selection)
           .padding(.horizontal, 6)
@@ -90,10 +87,10 @@ struct DashboardView: View {
         Button {
           Task { await store.refreshAll() }
         } label: {
-          Label("Refresh", systemImage: "arrow.clockwise")
+          Label("Actualiser", systemImage: "arrow.clockwise")
         }
-        .help("Refresh usage and live quotas")
-        SettingsLink { Label("Settings", systemImage: "gearshape") }.help("Settings")
+        .help("Actualiser l'utilisation et les quotas en direct")
+        SettingsLink { Label("Réglages", systemImage: "gearshape") }.help("Réglages")
       }
     }
   }
@@ -102,80 +99,46 @@ struct DashboardView: View {
 struct HarnessTabs: View {
   @Environment(UsageStore.self) private var store
   @Binding var selection: String
-  var compact = false
-  private var extra: [String] {
-    store.knownAgents.filter { !["codex", "claude", "cursor"].contains($0) }
+  private static let pinned = ["summary", "claude", "codex"]
+  // Cursor is always offered, even before any Cursor usage shows up in the logs.
+  private var others: [String] {
+    (["cursor"] + store.knownAgents.filter { !Self.pinned.contains($0) })
+      .reduce(into: [String]()) { list, agent in if !list.contains(agent) { list.append(agent) } }
   }
   var body: some View {
     HStack(spacing: 8) {
       Picker("Harness", selection: $selection) {
-        Text("General").tag("summary")
-        Text("Codex").tag("codex")
         Text("Claude").tag("claude")
-        Text("Cursor").tag("cursor")
+        Text("Codex").tag("codex")
+        Text("Général").tag("summary")
       }.pickerStyle(.segmented).labelsHidden()
-      if !compact, !extra.isEmpty {
-        Menu(extra.contains(selection) ? harnessName(selection) : "More") {
-          ForEach(extra, id: \.self) { agent in Button(harnessName(agent)) { selection = agent } }
-        }.fixedSize()
+      Menu {
+        ForEach(others, id: \.self) { agent in Button(harnessName(agent)) { selection = agent } }
+      } label: {
+        HStack(spacing: 4) {
+          Text(others.contains(selection) ? harnessName(selection) : "Autres")
+          Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+        }
       }
+      .menuIndicator(.hidden)
+      .fixedSize()
     }.controlSize(.regular)
   }
 
-}
-
-struct QuotaSourceMenu: View {
-  @Environment(UsageStore.self) private var store
-  var body: some View {
-    @Bindable var store = store
-    Menu {
-      ForEach(QuotaSource.allCases) { source in
-        Button {
-          store.quotaSource = source
-        } label: {
-          HStack {
-            Text(source.label)
-            Spacer()
-            if let remaining = remainingQuota(
-              for: source, forecast: store.forecast(for: source.rawValue),
-              cursorAccount: store.summary?.cursorAccount,
-              claudeAccount: store.summary?.claudeAccount)
-            {
-              Text(menuBarQuotaText(remaining))
-            }
-          }
-        }
-      }
-    } label: {
-      Text(
-        menuBarQuotaText(
-          store.remainingPercent, stale: store.quotaIsStale(at: store.quotaCheckDate))
-      )
-      .monospacedDigit()
-      .fontWeight(.medium)
-      .fixedSize()
-    }
-    .menuIndicator(.visible)
-    .fixedSize()
-    .id(store.remainingPercent ?? -1)
-    .help("Quota shown in the menu bar")
-    .accessibilityLabel(
-      "\(store.quotaSource.label) \(menuBarQuotaText(store.remainingPercent))")
-  }
 }
 
 struct QuotaSourceSettings: View {
   @Environment(UsageStore.self) private var store
   var body: some View {
     @Bindable var store = store
-    Section("Menu bar quota") {
-      Picker("Show remaining", selection: $store.quotaSource) {
+    Section("Quota dans la barre des menus") {
+      Picker("Afficher le restant de", selection: $store.quotaSource) {
         ForEach(QuotaSource.allCases) { source in
           Text(source.label).tag(source)
         }
       }
       Text(
-        "The flame in the menu bar and the window toolbar show this remaining percentage. Codex uses the live weekly account meter, Claude uses its weekly limit, and Cursor uses promotional credits while those remain, otherwise the included allowance."
+        "La flamme de la barre des menus affiche ce pourcentage restant. Codex s'appuie sur le compteur hebdomadaire de ton compte, Claude sur sa limite hebdomadaire, et Cursor sur les crédits promotionnels tant qu'il en reste, sinon sur l'enveloppe incluse."
       )
       .font(.caption).foregroundStyle(.secondary)
     }
@@ -189,40 +152,41 @@ struct SettingsView: View {
     Form {
       LoginItemSettings()
       AppearanceSettings()
+      CurrencySettings()
       QuotaSourceSettings()
       UpdateSettings()
-      Section("Data source") {
-        TextField("CLI executable", text: $store.customPath, prompt: Text("Bundled agent-burn"))
-          .help("Absolute path to the native agent-burn executable")
-        Button("Choose executable…") {
+      Section("Source des données") {
+        TextField("Exécutable du CLI", text: $store.customPath, prompt: Text("agent-burn intégré"))
+          .help("Chemin absolu vers l'exécutable agent-burn natif")
+        Button("Choisir l'exécutable…") {
           let panel = NSOpenPanel()
           panel.canChooseDirectories = false
           panel.allowsMultipleSelection = false
-          panel.message = "Choose the native agent-burn executable."
+          panel.message = "Choisis l'exécutable agent-burn natif."
           if panel.runModal() == .OK, let url = panel.url { store.customPath = url.path }
         }
-        Toggle("Use cached pricing and limits", isOn: $store.offline)
+        Toggle("Utiliser les tarifs et limites en cache", isOn: $store.offline)
         Text(
-          "Cached mode skips live subscription requests. Otherwise, the CLI may contact pricing and harness providers."
+          "Le mode cache évite les requêtes vers les abonnements en direct. Sinon, le CLI peut interroger les fournisseurs de tarifs et de harness."
         )
         .font(.caption).foregroundStyle(.secondary)
       }
-      Section("Log folders") {
-        TextField("Codex homes", text: $store.codexHomes, axis: .vertical)
+      Section("Dossiers de logs") {
+        TextField("Dossiers Codex", text: $store.codexHomes, axis: .vertical)
           .lineLimit(2...4).font(.system(.caption, design: .monospaced))
         Text(
-          "Comma-separated Codex folders. The normal ~/.codex folder is included alongside the launching profile. Sessions and archived sessions are read by the CLI."
+          "Dossiers Codex séparés par des virgules. Le dossier ~/.codex habituel est inclus en plus du profil de lancement. Les sessions et les sessions archivées sont lues par le CLI."
         )
         .font(.caption).foregroundStyle(.secondary)
       }
-      Section("Refresh") {
-        Picker("Automatically refresh", selection: $store.refreshMinutes) {
-          Text("Every minute").tag(1)
-          Text("Every 5 minutes").tag(5)
-          Text("Every 15 minutes").tag(15)
-          Text("Every 30 minutes").tag(30)
+      Section("Actualisation") {
+        Picker("Actualiser automatiquement", selection: $store.refreshMinutes) {
+          Text("Chaque minute").tag(1)
+          Text("Toutes les 5 minutes").tag(5)
+          Text("Toutes les 15 minutes").tag(15)
+          Text("Toutes les 30 minutes").tag(30)
         }
-        Button(store.isLoading ? "Refreshing…" : "Apply and refresh") {
+        Button(store.isLoading ? "Actualisation…" : "Appliquer et actualiser") {
           Task { await store.refreshAll() }
         }
       }

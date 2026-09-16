@@ -38,11 +38,12 @@ struct CursorAccountView: View {
     GroupBox {
       VStack(alignment: .leading, spacing: 18) {
         HStack {
-          Label("Cursor " + (plan?.plan ?? "account"), systemImage: "creditcard")
+          Label("Cursor " + (plan?.plan ?? "compte"), systemImage: "creditcard")
             .font(.headline)
           Spacer()
           if let price = plan?.pricePerMonth {
-            Text(currency(price) + " / month").foregroundStyle(.secondary)
+            Text(planPrice(price) + " / mois " + planPriceTaxNote)
+              .foregroundStyle(.secondary).help(planPriceExplanation)
           }
         }
         if let account {
@@ -53,12 +54,12 @@ struct CursorAccountView: View {
             grantBars(account)
           }
           Text(
-            "Plan allowance, promotional credits and API-equivalent usage are different balances. Missing billing amounts are not treated as zero."
+            "L'enveloppe de l'offre, les crédits promotionnels et la valeur équivalente API sont trois soldes distincts. Un montant de facturation absent n'est pas compté comme zéro."
           )
           .font(.caption).foregroundStyle(.secondary)
         } else {
           Text(
-            "Account balances unavailable. Refresh with live data enabled to retrieve Cursor’s allowance, credits and billing cycle."
+            "Soldes du compte indisponibles. Actualise avec les données en direct activées pour récupérer l'enveloppe, les crédits et le cycle de facturation de Cursor."
           )
           .font(.caption).foregroundStyle(.secondary)
         }
@@ -75,7 +76,7 @@ struct CursorAccountView: View {
         stale: !forecast.isFresh(at: store.quotaCheckDate)
           || store.quotaError(for: "cursor") != nil,
         staleHelp: store.quotaError(for: "cursor")
-          ?? "Showing the last known reading. Update pending.",
+          ?? "Dernière mesure connue affichée. Mise à jour en attente.",
         rates: store.blendRates(for: "cursor"),
         style: .promotionalCredits
       )
@@ -94,20 +95,20 @@ struct CursorAccountView: View {
     }
     HStack(alignment: .firstTextBaseline) {
       VStack(alignment: .leading, spacing: 4) {
-        Text("Promotional credits").font(.subheadline.weight(.medium))
-        Text("Expires " + date(account.grants.first { $0.kind == "promo" }?.expiresAtMs))
+        Text("Crédits promotionnels").font(.subheadline.weight(.medium))
+        Text("Expiration " + date(account.grants.first { $0.kind == "promo" }?.expiresAtMs))
           .font(.caption).foregroundStyle(.secondary)
       }
       Spacer()
       VStack(alignment: .trailing, spacing: 4) {
-        Text(account.activeRemainingUSD.map(currency) ?? "Unavailable")
+Text(account.activeRemainingUSD.map(currency) ?? "Indisponible")
           .font(.title2.weight(.semibold)).monospacedDigit()
-        Text("remaining of " + (account.activeLimitUSD.map(currency) ?? "unknown"))
+        Text("restants sur " + (account.activeLimitUSD.map(currency) ?? "un plafond inconnu"))
           .font(.caption).foregroundStyle(.secondary)
       }
     }
     if unusedIncludedWhileCreditsRemain(account) {
-      Text("Included allowance is unused while promotional credits remain.")
+      Text("L'enveloppe incluse n'est pas entamée tant qu'il reste des crédits promotionnels.")
         .font(.caption).foregroundStyle(.secondary)
     }
   }
@@ -115,29 +116,29 @@ struct CursorAccountView: View {
   private func allowanceAndBilling(_ account: CursorAccount) -> some View {
     HStack(alignment: .top, spacing: 28) {
       VStack(alignment: .leading, spacing: 8) {
-        Text("Included allowance").font(.subheadline.weight(.medium))
-        Text(account.includedRemainingUSD.map(currency) ?? "Unavailable")
+        Text("Enveloppe incluse").font(.subheadline.weight(.medium))
+        Text(account.includedRemainingUSD.map(currency) ?? "Indisponible")
           .font(.title.weight(.semibold)).monospacedDigit()
-        Text("remaining of " + (account.includedLimitUSD.map(currency) ?? "unknown"))
+        Text("restants sur " + (account.includedLimitUSD.map(currency) ?? "un plafond inconnu"))
           .font(.caption).foregroundStyle(.secondary)
         if let used = account.includedPercentUsed {
           ProgressView(value: used, total: 100).tint(.purple)
           Text(
-            used.formatted(.number.precision(.fractionLength(1)))
-              + "% used · reported by Cursor"
+            used.formatted(.number.precision(.fractionLength(1)).locale(burnLocale))
+              + "% utilisés · rapporté par Cursor"
           )
           .font(.caption).foregroundStyle(.secondary)
         }
       }.frame(maxWidth: .infinity, alignment: .leading)
       Divider()
       VStack(alignment: .leading, spacing: 8) {
-        Text("Billing cycle").font(.subheadline.weight(.medium))
-        Text("Renews " + date(account.billingCycleEndMs)).font(.subheadline)
-        Text("Started " + date(account.billingCycleStartMs))
+        Text("Cycle de facturation").font(.subheadline.weight(.medium))
+        Text("Renouvellement " + date(account.billingCycleEndMs)).font(.subheadline)
+        Text("Début " + date(account.billingCycleStartMs))
           .font(.caption).foregroundStyle(.secondary)
-        Text("On-demand spend: " + (account.onDemandSpentUSD.map(currency) ?? "Not reported"))
+        Text("Dépense à la demande : " + (account.onDemandSpentUSD.map(currency) ?? "non communiquée"))
           .font(.caption).foregroundStyle(.secondary)
-        Text("On-demand limit: " + (account.onDemandLimitUSD.map(currency) ?? "Not reported"))
+        Text("Plafond à la demande : " + (account.onDemandLimitUSD.map(currency) ?? "non communiqué"))
           .font(.caption).foregroundStyle(.secondary)
       }.frame(maxWidth: .infinity, alignment: .leading)
     }.fixedSize(horizontal: false, vertical: true)
@@ -148,21 +149,21 @@ struct CursorAccountView: View {
       Divider()
       HStack {
         VStack(alignment: .leading, spacing: 6) {
-          Text(grant.kind == "promo" ? "Promotional credits" : "Account credits")
+          Text(grant.kind == "promo" ? "Crédits promotionnels" : "Crédits du compte")
             .font(.subheadline.weight(.medium))
-          Text("Expires " + date(grant.expiresAtMs)).font(.caption).foregroundStyle(
+          Text("Expiration " + date(grant.expiresAtMs)).font(.caption).foregroundStyle(
             .secondary)
         }
         Spacer()
         VStack(alignment: .trailing, spacing: 6) {
-          Text(grant.remainingUSD.map(currency) ?? "Unavailable")
+          Text(grant.remainingUSD.map(currency) ?? "Indisponible")
             .font(.title2.weight(.semibold)).monospacedDigit()
-          Text("remaining of " + (grant.totalUSD.map(currency) ?? "unknown"))
+          Text("restants sur " + (grant.totalUSD.map(currency) ?? "un plafond inconnu"))
             .font(.caption).foregroundStyle(.secondary)
           if let used = grantUsedPercent(grant) {
             ProgressView(value: used, total: 100)
             Text(
-              used.formatted(.number.precision(.fractionLength(1))) + "% used"
+              used.formatted(.number.precision(.fractionLength(1)).locale(burnLocale)) + "% utilisés"
             )
             .font(.caption).foregroundStyle(.secondary)
           }
@@ -172,9 +173,9 @@ struct CursorAccountView: View {
   }
 
   private func date(_ milliseconds: Double?) -> String {
-    guard let milliseconds else { return "Unavailable" }
+    guard let milliseconds else { return "indisponible" }
     return Date(timeIntervalSince1970: milliseconds / 1000).formatted(
-      date: .abbreviated, time: .omitted)
+      Date.FormatStyle(date: .abbreviated, time: .omitted, locale: burnLocale))
   }
 }
 
