@@ -83,8 +83,10 @@ struct QuotaChart: View {
       }
       AxisMarks(values: axisDates) { value in
         AxisTick(length: 4, stroke: StrokeStyle(lineWidth: 1)).foregroundStyle(BurnTheme.grid)
-        // The last midday label hugs its tick so the trailing edge never truncates it.
-        AxisValueLabel(anchor: value.index == value.count - 1 ? .topTrailing : nil) {
+        // Tous les libellés sont centrés sur leur repère : aligner le dernier à
+        // droite le faisait déborder sur son voisin. L'échelle réserve déjà de
+        // la place après le dernier repère, il ne peut pas être tronqué.
+        AxisValueLabel {
           if let date = value.as(Date.self) {
             Text(quotaChartAxisLabel(date, range: range, marks: axisDates, compact: compact))
               .foregroundStyle(muted)

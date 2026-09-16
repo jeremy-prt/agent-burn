@@ -447,10 +447,12 @@ func quotaChartScale(
 ) -> ClosedRange<Date> {
   let window = quotaChartWindow(range: range, forecast: forecast, now: now, calendar: calendar)
   let grid = quotaChartGridDates(range: range, forecast: forecast, now: now, calendar: calendar)
-  let start = min(grid.first ?? window.lowerBound, window.lowerBound)
+  // L'échelle démarre au vrai début de la fenêtre de quota, pas au minuit qui
+  // précède : sinon la courbe semble commencer un jour trop tard.
+  let start = window.lowerBound
   guard range != .today, let last = grid.last else { return start...window.upperBound }
-  // Leave room after the last midday label so it is never clipped at the trailing edge.
-  return start...max(window.upperBound, last.addingTimeInterval(21 * 3600))
+  // Marge après le dernier libellé pour qu'il ne soit jamais tronqué au bord.
+  return start...max(window.upperBound, last.addingTimeInterval(12 * 3600))
 }
 
 func quotaChartStepComponent(range: QuotaChartRange, window: ClosedRange<Date>)
@@ -493,10 +495,10 @@ func quotaChartAxisDates(
     }
   }
   let scale = quotaChartScale(range: range, forecast: forecast, now: now, calendar: calendar)
-  let marks = grid.map { date in
-    let midday = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: date) ?? date
-    return min(max(midday, scale.lowerBound), scale.upperBound)
-  }
+  // Les libellés se posent sur les lignes de grille, pas à midi : sinon le
+  // premier paraît décalé d'une colonne. Un repère hors de l'échelle est écarté
+  // plutôt que ramené sur le bord, où il collerait à son voisin.
+  let marks = grid.filter { $0 >= scale.lowerBound && $0 <= scale.upperBound }
   let days = window.upperBound.timeIntervalSince(window.lowerBound) / 86_400
   return days > 45 ? quotaChartThinnedDates(marks) : marks
 }
