@@ -62,13 +62,18 @@ struct ClaudeAccountView: View {
       if account != nil {
         MeterRow(items: items)
       } else {
-        Label(
-          claudeAccountUnavailableMessage(unavailableReason),
-          systemImage: unavailableReason == "rate-limited"
-            ? "clock.arrow.circlepath" : "exclamationmark.triangle"
-        )
-        .font(.caption).foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 8) {
+          Label(
+            claudeAccountUnavailableMessage(unavailableReason),
+            systemImage: unavailableReason == "rate-limited"
+              ? "clock.arrow.circlepath" : "exclamationmark.triangle"
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+          if unavailableReason == "token-expired" || unavailableReason == "no-token" {
+            ClaudeSessionButton()
+          }
+        }
       }
     }
   }

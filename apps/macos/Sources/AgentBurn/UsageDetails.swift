@@ -453,7 +453,9 @@ struct SourceUsageView: View {
         } else if agent == "cursor" {
           CursorAccountView(account: store.summary?.cursorAccount, plan: subscription)
         } else if agent == "claude" {
-          ClaudeAccountView(account: store.summary?.claudeAccount, plan: subscription)
+          ClaudeAccountView(
+            account: store.summary?.claudeAccount, plan: subscription,
+            unavailableReason: store.summary?.claudeAccountUnavailable)
         }
         HStack {
           SpendMetric(

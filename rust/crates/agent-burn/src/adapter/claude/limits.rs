@@ -116,13 +116,30 @@ pub(crate) fn load_account_result(offline: bool) -> Result<Value, Unavailable> {
     Ok(account_json(&limits))
 }
 
-/// The raw credentials blob, from the keychain first and the file as a fallback.
+/// The raw credentials blob.
+///
+/// The macOS app's own renewed session comes first: reading the keychain makes
+/// macOS prompt for a password whenever the item's access list has been reset,
+/// and the renewed file avoids that round trip entirely.
 fn read_credentials() -> Option<String> {
+    if let Some(json) = renewed_credentials() {
+        return Some(json);
+    }
     #[cfg(target_os = "macos")]
     if let Some(json) = keychain_credentials() {
         return Some(json);
     }
     file_credentials()
+}
+
+/// Session renewed by the macOS app, ignored once its access token has expired.
+fn renewed_credentials() -> Option<String> {
+    let path = home::home_dir()?
+        .join("Library/Application Support/Agent Burn")
+        .join("claude-session.json");
+    let json = fs::read_to_string(path).ok()?;
+    let expires_at = expiry_from_credentials(&json)?;
+    (expires_at > utc_now().as_millis()).then_some(json)
 }
 
 /// An access token past its expiry is refused with a 401, so name that case.

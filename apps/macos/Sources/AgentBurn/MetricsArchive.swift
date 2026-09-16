@@ -77,6 +77,8 @@ struct MetricsArchive: Codable {
       agents: usages, models: live?.models ?? [], daily: days, subscription: live?.subscription)
     report.cursorAccount = live?.cursorAccount
     report.claudeAccount = live?.claudeAccount
+    // Sans ce report, la vue perd le motif et affiche un message générique.
+    report.claudeAccountUnavailable = live?.claudeAccountUnavailable
     return report
   }
 }

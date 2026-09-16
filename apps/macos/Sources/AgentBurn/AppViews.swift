@@ -154,6 +154,7 @@ struct SettingsView: View {
     Form {
       LoginItemSettings()
       AppearanceSettings()
+      ClaudeSessionSettings()
       CurrencySettings()
       QuotaSourceSettings()
       UpdateSettings()

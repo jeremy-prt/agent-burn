@@ -36,3 +36,22 @@ copie à l'ancienne signature, macOS le tue avec
 `SIGKILL (Code Signature Invalid)` et l'historique des quotas cesse de se
 remplir en silence. Travailler sur la copie installée dans `/Applications`
 évite ce cycle.
+
+## Ne jamais écrire dans le trousseau
+
+L'`accessToken` de Claude Code ne vit que 8 h, le `refreshToken` un mois. Le
+bouton « Renouveler la session » échange le second contre un neuf via
+`https://platform.claude.com/v1/oauth/token`, avec un `User-Agent`
+`claude-code/…` : Cloudflare renvoie 429 à tout agent inconnu, et
+`console.anthropic.com` renvoie 404 depuis la migration.
+
+Le jeton renouvelé est écrit dans
+`~/Library/Application Support/Agent Burn/claude-session.json`, jamais dans le
+trousseau : réécrire l'entrée `Claude Code-credentials` efface sa liste de
+contrôle d'accès et macOS redemande le mot de passe à chaque lecture. Ordre de
+lecture côté CLI : ce fichier s'il est valide, puis le trousseau, puis
+`~/.claude/.credentials.json`.
+
+Anthropic n'inclut un `refresh_token` dans sa réponse que s'il l'a fait
+tourner : son absence ne veut pas dire « plus de jeton », il faut conserver
+l'ancien.
