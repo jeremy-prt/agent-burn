@@ -159,7 +159,6 @@ struct QuotaSummary: View {
 
   private var facts: some View {
     VStack(spacing: 11) {
-      row(style.resetTitle, quotaTimeLeft(forecast, now: now), help: style.resetHelp)
       row(
         "Par jour",
         "\(forecast.dailyAllowance.formatted(.number.precision(.fractionLength(1)).locale(burnLocale)))%\u{00A0}/ jour",
@@ -218,7 +217,7 @@ struct DailySpendChart: View {
       return (date, usage)
     }
   }
-  private var scale: ClosedRange<Date> {
+  private var dataScale: ClosedRange<Date> {
     if let domain { return domain }
     if let first = points.first?.date, let last = points.last?.date, first <= last {
       return first...last
@@ -226,10 +225,24 @@ struct DailySpendChart: View {
     let today = Calendar(identifier: .gregorian).startOfDay(for: .now)
     return today...today
   }
-  private var spanDays: Int { spendSpanDays(lower: scale.lowerBound, upper: scale.upperBound) }
+  // La granularité automatique se mesure sur l'étendue des données brutes :
+  // la calculer depuis « scale » créerait un cycle scale -> effective -> scale.
+  private var spanDays: Int {
+    spendSpanDays(lower: dataScale.lowerBound, upper: dataScale.upperBound)
+  }
   private var effective: SpendGranularity {
     guard showsGranularity else { return .daily }
     return granularityOverride ?? spendGranularityAuto(spanDays: spanDays)
+  }
+  private var scale: ClosedRange<Date> {
+    // Une barre hebdo ou mensuelle occupe tout son palier : l'échelle va du
+    // début du premier palier à la fin exclusive du dernier (début + 1 unité),
+    // sinon la première barre est coupée et la dernière sort du cadre.
+    guard effective != .daily, let first = buckets.first?.date, let last = buckets.last?.date
+    else { return dataScale }
+    let calendar = spendCalendar()
+    let upper = calendar.date(byAdding: effective.unit, value: 1, to: last) ?? last
+    return first...max(upper, first)
   }
   private var granularityBinding: Binding<SpendGranularity> {
     Binding(get: { effective }, set: { granularityOverride = $0 })
@@ -294,13 +307,23 @@ struct DailySpendChart: View {
         }
       }
       .chartXAxis {
-        AxisMarks(values: .automatic(desiredCount: 5)) { _ in
-          if effective == .monthly {
-            AxisValueLabel(format: .dateTime.month(.abbreviated).year()).foregroundStyle(
-              BurnTheme.muted)
-          } else {
+        if effective == .daily {
+          AxisMarks(values: .automatic(desiredCount: 5)) { _ in
             AxisValueLabel(format: .dateTime.month(.abbreviated).day()).foregroundStyle(
               BurnTheme.muted)
+          }
+        } else {
+          // Un repère par palier, centré sous sa barre : la répartition
+          // automatique posait plusieurs repères dans le même mois, d'où les
+          // libellés répétés (« août 2026 » trois fois).
+          AxisMarks(values: buckets.map(\.date)) { _ in
+            if effective == .monthly {
+              AxisValueLabel(format: .dateTime.month(.abbreviated).year(), centered: true)
+                .foregroundStyle(BurnTheme.muted)
+            } else {
+              AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
+                .foregroundStyle(BurnTheme.muted)
+            }
           }
         }
       }

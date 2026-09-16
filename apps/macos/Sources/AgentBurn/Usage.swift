@@ -1072,12 +1072,6 @@ var planPriceExplanation: String {
     "Prix de ton offre TVA comprise (\(percent) %), converti depuis le tarif catalogue en dollars hors taxes."
 }
 
-/// Formate un montant déjà exprimé dans la devise d'affichage, sans reconvertir.
-func currencyConverted(_ value: Double) -> String {
-  value.formatted(
-    .currency(code: CurrencyRate.code).precision(.fractionLength(2)).locale(burnLocale))
-}
-
 func tokens(_ value: UInt64) -> String {
   let number = Double(value)
   func short(_ scaled: Double, _ digits: Int, _ suffix: String) -> String {

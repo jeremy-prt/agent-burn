@@ -99,29 +99,31 @@ struct DashboardView: View {
 struct HarnessTabs: View {
   @Environment(UsageStore.self) private var store
   @Binding var selection: String
-  private static let pinned = ["summary", "claude", "codex"]
-  // Cursor is always offered, even before any Cursor usage shows up in the logs.
+  private static let pinned = ["summary", "claude", "codex", "cursor"]
+  /// Harnesses détectés en plus des quatre onglets fixes (OpenCode, Pi...).
   private var others: [String] {
-    (["cursor"] + store.knownAgents.filter { !Self.pinned.contains($0) })
-      .reduce(into: [String]()) { list, agent in if !list.contains(agent) { list.append(agent) } }
+    store.knownAgents.filter { !Self.pinned.contains($0) }
   }
   var body: some View {
     HStack(spacing: 8) {
       Picker("Harness", selection: $selection) {
+        Text("Général").tag("summary")
         Text("Claude").tag("claude")
         Text("Codex").tag("codex")
-        Text("Général").tag("summary")
+        Text("Cursor").tag("cursor")
       }.pickerStyle(.segmented).labelsHidden()
-      Menu {
-        ForEach(others, id: \.self) { agent in Button(harnessName(agent)) { selection = agent } }
-      } label: {
-        HStack(spacing: 4) {
-          Text(others.contains(selection) ? harnessName(selection) : "Autres")
-          Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+      if !others.isEmpty {
+        Menu {
+          ForEach(others, id: \.self) { agent in Button(harnessName(agent)) { selection = agent } }
+        } label: {
+          HStack(spacing: 4) {
+            Text(others.contains(selection) ? harnessName(selection) : "Autres")
+            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+          }
         }
+        .menuIndicator(.hidden)
+        .fixedSize()
       }
-      .menuIndicator(.hidden)
-      .fixedSize()
     }.controlSize(.regular)
   }
 

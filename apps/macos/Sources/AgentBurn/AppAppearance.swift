@@ -32,7 +32,9 @@ import SwiftUI
     self.defaults = defaults
     self.applyPolicy = applyPolicy
     menuBarOnly = defaults.bool(forKey: "menuBarOnly")
-    menuBarVisible = defaults.object(forKey: "menuBarVisible") as? Bool ?? true
+    // Jérémy n'utilise que la fenêtre : pas d'icône dans la barre des menus
+    // tant qu'il ne la réactive pas lui-même dans les réglages.
+    menuBarVisible = defaults.object(forKey: "menuBarVisible") as? Bool ?? false
   }
 
   func apply() { applyPolicy(menuBarOnly ? .accessory : .regular) }

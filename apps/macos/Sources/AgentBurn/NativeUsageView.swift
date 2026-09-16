@@ -76,6 +76,7 @@ struct NativeUsageView: View {
             )
           }.padding(12).frame(height: 85)
         }
+        if store.hasPeriodDetails { modelSection }
         HStack(alignment: .top, spacing: 18) {
           GroupBox {
             ActivityChart(
@@ -115,7 +116,6 @@ struct NativeUsageView: View {
             }.frame(width: 285)
           }
         }
-        if store.hasPeriodDetails { modelSection }
         if agent == "cursor", store.period == .all, let recovered = store.recoveredCursor,
           let models = recovered.models
         {
@@ -182,18 +182,23 @@ struct NativeUsageView: View {
   }
 
   @ViewBuilder private var meters: some View {
+    // Les trois harnesses partagent la même mise en page : rangée de compteurs
+    // compacts, puis la courbe de rythme.
     if agent == "cursor" {
       CursorAccountView(
         account: store.summary?.cursorAccount,
         plan: store.summary?.subscription?.agents.first { $0.agent == "cursor" })
+      if cursorHasPromotionalCredits(store.summary?.cursorAccount) {
+        quotaSection("cursor", style: .promotionalCredits)
+      }
     } else if agent == "claude" {
       ClaudeAccountView(
         account: store.summary?.claudeAccount,
         plan: store.summary?.subscription?.agents.first { $0.agent == "claude" },
         unavailableReason: store.summary?.claudeAccountUnavailable)
-      // La courbe de rythme n'était branchée que sur Codex : Claude en a autant besoin.
       quotaSection("claude")
     } else if agent == "codex" {
+      CodexAccountView(plan: store.summary?.subscription?.agents.first { $0.agent == "codex" })
       quotaSection("codex")
     }
   }
@@ -315,7 +320,7 @@ private struct ActivityChart: View {
       return (date, usage)
     }
   }
-  private var scale: ClosedRange<Date> {
+  private var dataScale: ClosedRange<Date> {
     if let domain { return domain }
     if let first = points.first?.date, let last = points.last?.date, first <= last {
       return first...last
@@ -323,9 +328,23 @@ private struct ActivityChart: View {
     let today = Calendar(identifier: .gregorian).startOfDay(for: .now)
     return today...today
   }
-  private var spanDays: Int { spendSpanDays(lower: scale.lowerBound, upper: scale.upperBound) }
+  // La granularité automatique se mesure sur l'étendue des données brutes :
+  // la calculer depuis « scale » créerait un cycle scale -> effective -> scale.
+  private var spanDays: Int {
+    spendSpanDays(lower: dataScale.lowerBound, upper: dataScale.upperBound)
+  }
   private var effective: SpendGranularity {
     granularityOverride ?? spendGranularityAuto(spanDays: spanDays)
+  }
+  private var scale: ClosedRange<Date> {
+    // Une barre hebdo ou mensuelle occupe tout son palier : l'échelle va du
+    // début du premier palier à la fin exclusive du dernier (début + 1 unité),
+    // sinon la première barre est coupée et la dernière sort du cadre.
+    guard effective != .daily, let first = buckets.first?.date, let last = buckets.last?.date
+    else { return dataScale }
+    let calendar = spendCalendar()
+    let upper = calendar.date(byAdding: effective.unit, value: 1, to: last) ?? last
+    return first...max(upper, first)
   }
   private var granularityBinding: Binding<SpendGranularity> {
     Binding(get: { effective }, set: { granularityOverride = $0 })
@@ -400,11 +419,20 @@ Picker("Granularité", selection: granularityBinding) {
         }
       }
       .chartXAxis {
-        AxisMarks(values: .automatic(desiredCount: 5)) { _ in
-          if effective == .monthly {
-            AxisValueLabel(format: .dateTime.month(.abbreviated).year())
-          } else {
+        if effective == .daily {
+          AxisMarks(values: .automatic(desiredCount: 5)) { _ in
             AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+          }
+        } else {
+          // Un repère par palier, centré sous sa barre : la répartition
+          // automatique posait plusieurs repères dans le même mois, d'où les
+          // libellés répétés.
+          AxisMarks(values: buckets.map(\.date)) { _ in
+            if effective == .monthly {
+              AxisValueLabel(format: .dateTime.month(.abbreviated).year(), centered: true)
+            } else {
+              AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
+            }
           }
         }
       }

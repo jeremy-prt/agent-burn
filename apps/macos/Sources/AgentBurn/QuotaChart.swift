@@ -31,7 +31,7 @@ struct QuotaChart: View {
     quotaChartReading(at: cursor, samples: drawnSamples, forecast: forecast, range: range)
   }
   var body: some View {
-    VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+    VStack(alignment: .leading, spacing: compact ? 10 : 20) {
       header
       chart
     }
