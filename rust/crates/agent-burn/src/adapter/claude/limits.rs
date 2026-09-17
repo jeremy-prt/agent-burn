@@ -151,11 +151,14 @@ fn expired(credentials: &str) -> bool {
 }
 
 fn expiry_from_credentials(json: &str) -> Option<i64> {
-    serde_json::from_str::<Value>(json.trim())
+    // Claude Code écrit un flottant (« 1789609419934.927 ») : `as_i64` échoue
+    // dessus et laissait passer des jetons déjà expirés.
+    let expires_at = serde_json::from_str::<Value>(json.trim())
         .ok()?
         .get("claudeAiOauth")?
         .get("expiresAt")?
-        .as_i64()
+        .as_f64()?;
+    expires_at.is_finite().then(|| expires_at as i64)
 }
 
 #[cfg(target_os = "macos")]
@@ -192,6 +195,9 @@ fn token_from_credentials(json: &str) -> Option<String> {
 fn fetch_usage_limits(token: &str) -> Result<ClaudeUsageLimits, Unavailable> {
     let agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(FETCH_TIMEOUT_SECONDS)))
+        // Sans cela, ureq renvoie une erreur dès qu'un statut dépasse 400 et
+        // l'on ne peut plus distinguer un 429 d'une panne réseau.
+        .http_status_as_error(false)
         .build()
         .new_agent();
     let mut response = agent

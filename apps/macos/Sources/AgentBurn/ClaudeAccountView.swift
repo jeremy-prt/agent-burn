@@ -70,7 +70,9 @@ struct ClaudeAccountView: View {
           )
           .font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
-          if unavailableReason == "token-expired" || unavailableReason == "no-token" {
+          // Le bouton suit l'état réel du jeton, pas le motif remonté par le
+          // CLI : un 429 ou une panne réseau masquaient le seul recours.
+          if ClaudeSession.shared.isExpired || unavailableReason == "no-token" {
             ClaudeSessionButton()
           }
         }
