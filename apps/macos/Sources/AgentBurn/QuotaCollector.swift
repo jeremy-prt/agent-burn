@@ -39,6 +39,9 @@ enum QuotaCollector {
     defer { close(descriptor) }
     guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else { return }
     defer { flock(descriptor, LOCK_UN) }
+    // L'app peut être fermée depuis des heures : le jeton a de bonnes chances
+    // d'être périmé, et sans renouvellement le relevé ne rapporte rien.
+    await ClaudeCredentials.renewIfExpired()
     let file = QuotaHistoryFile(directory: directory)
     var history = try file.load() ?? QuotaHistory()
     await withTaskGroup(of: (String, QuotaReading?, String?).self) { group in

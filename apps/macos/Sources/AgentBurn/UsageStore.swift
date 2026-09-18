@@ -209,6 +209,7 @@ final class UsageStore {
   private func watchQuotas() async {
     while !Task.isCancelled {
       quotaCheckDate = .now
+      await ClaudeCredentials.renewIfExpired()
       configureQuotaCollector()
       reloadQuotas()
       let backgroundEnabled = defaults.object(forKey: "backgroundQuotas") as? Bool != false
@@ -278,6 +279,8 @@ final class UsageStore {
   }
 
   func refreshAll() async {
+    // Un jeton périmé rend tout le reste inutile : on le renouvelle d'abord.
+    await ClaudeCredentials.renewIfExpired()
     async let quotas: () = collectQuotasNow()
     await refresh()
     await quotas
