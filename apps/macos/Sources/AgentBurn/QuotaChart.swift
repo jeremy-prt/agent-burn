@@ -137,9 +137,10 @@ struct QuotaChart: View {
 
   @ChartContentBuilder private var recordedArea: some ChartContent {
     ForEach(Array(drawnSamples.enumerated()), id: \.offset) { _, sample in
+      // Les points en escalier partagent une date : empilés, ils dépasseraient 100 %.
       AreaMark(
         x: .value("Date", sample.date), y: .value("Restant", sample.remaining),
-        series: .value("Series", "Recorded area")
+        series: .value("Series", "Recorded area"), stacking: .unstacked
       )
       .foregroundStyle(color.opacity(0.12))
       .interpolationMethod(.linear)
