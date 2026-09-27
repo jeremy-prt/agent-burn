@@ -34,8 +34,10 @@ struct NativeUsageView: View {
         }
         VStack(alignment: .leading, spacing: 4) {
           Text(agent.map(harnessName) ?? "Tous les harnesses").font(.title2.weight(.semibold))
-          Text("\(store.period.label) · utilisation issue de tes logs et des fournisseurs connectés")
-            .font(.subheadline).foregroundStyle(.secondary)
+          Text(
+            "\(store.period.label) · utilisation issue de tes logs et des fournisseurs connectés"
+          )
+          .font(.subheadline).foregroundStyle(.secondary)
         }
         Spacer()
         PeriodPicker()
@@ -121,7 +123,8 @@ struct NativeUsageView: View {
         {
           GroupBox {
             DisclosureGroup(
-              "Historique de modèles récupéré · \(models.count) modèle\(models.count > 1 ? "s" : "")") {
+              "Historique de modèles récupéré · \(models.count) modèle\(models.count > 1 ? "s" : "")"
+            ) {
               VStack(alignment: .leading, spacing: 10) {
                 Text(
                   "Instantané : \(recovered.daily?.first?.date ?? "") – \(recovered.daily?.last?.date ?? ""). Les modèles du cycle en cours sont affichés au-dessus."
@@ -196,7 +199,7 @@ struct NativeUsageView: View {
         account: store.summary?.claudeAccount,
         plan: store.summary?.subscription?.agents.first { $0.agent == "claude" },
         unavailableReason: store.summary?.claudeAccountUnavailable)
-      quotaSection("claude")
+      claudeQuotas
     } else if agent == "codex" {
       CodexAccountView(plan: store.summary?.subscription?.agents.first { $0.agent == "codex" })
       quotaSection("codex")
@@ -225,11 +228,60 @@ struct NativeUsageView: View {
     }
   }
 
+  /// Session et hebdo côte à côte, chacun en carte verticale ; empilés si la
+  /// fenêtre est trop étroite pour deux graphiques lisibles.
+  @ViewBuilder private var claudeQuotas: some View {
+    let now = store.quotaCheckDate
+    let weekly = store.forecast(for: "claude")
+    let session = store.forecast(for: claudeSessionQuotaAgent).flatMap { $0.reset > now ? $0 : nil }
+    if let weekly, let session {
+      if let error = store.errors["claude"] { ReportNotice(message: error) }
+      if let error = store.errors["quotaService"] { ReportNotice(message: error) }
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: 12) {
+          quotaCard(claudeSessionQuotaAgent, forecast: session, style: .session)
+          quotaCard("claude", forecast: weekly, style: .weekly)
+        }
+        VStack(spacing: 12) {
+          quotaCard(claudeSessionQuotaAgent, forecast: session, style: .session)
+          quotaCard("claude", forecast: weekly, style: .weekly)
+        }
+      }
+    } else {
+      quotaSection("claude")
+    }
+  }
+
+  private func quotaCard(_ agent: String, forecast: Forecast, style: QuotaMeterStyle)
+    -> some View
+  {
+    let now = store.quotaCheckDate
+    let samples = store.samples(for: agent, range: .rte, now: now)
+    return GroupBox {
+      VStack(alignment: .leading, spacing: 12) {
+        Text(style.title).font(.headline).lineLimit(1)
+        QuotaSummary(
+          forecast: forecast, samples: samples, now: now,
+          stale: !forecast.isFresh(at: now) || store.quotaError(for: agent) != nil,
+          staleHelp: store.quotaError(for: agent)
+            ?? "Dernière mesure connue affichée. Mise à jour en attente.",
+          compact: true, style: style)
+        QuotaChart(
+          forecast: forecast, samples: samples, color: BurnTheme.color(for: agent),
+          compact: true, range: .rte, now: now, resetLabel: style.chartResetLabel
+        )
+      }.padding(12)
+    }
+    .frame(minWidth: 420, idealWidth: 420, maxWidth: .infinity)
+  }
+
   @ViewBuilder private func quotaSection(
     _ agent: String, style: QuotaMeterStyle = .weekly
   ) -> some View {
     @Bindable var store = store
-    let range = store.chartRange(for: agent)
+    // Côté Claude, seule la semaine en cours compte : pas de choix de période.
+    let fixedRange = agent == "claude"
+    let range = fixedRange ? .rte : store.chartRange(for: agent)
     if let error = store.errors[agent] { ReportNotice(message: error) }
     if let error = store.errors["quotaService"] { ReportNotice(message: error) }
     if let forecast = store.forecast(for: agent) {
@@ -251,9 +303,11 @@ struct NativeUsageView: View {
           )
           .frame(width: 236, alignment: .leading)
           VStack(alignment: .trailing, spacing: 8) {
-            QuotaChartRangePicker(
-              range: agent == "cursor"
-                ? $store.cursorQuotaChartRange : $store.quotaChartRange)
+            if !fixedRange {
+              QuotaChartRangePicker(
+                range: agent == "cursor"
+                  ? $store.cursorQuotaChartRange : $store.quotaChartRange)
+            }
             QuotaChart(
               forecast: forecast,
               samples: store.samples(
@@ -366,7 +420,7 @@ private struct ActivityChart: View {
     VStack(alignment: .leading, spacing: 16) {
       HStack {
         Text(effective.spendTitle).font(.headline)
-Picker("Granularité", selection: granularityBinding) {
+        Picker("Granularité", selection: granularityBinding) {
           ForEach(SpendGranularity.allCases) { option in
             Text(option.label).tag(option)
           }

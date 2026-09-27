@@ -385,14 +385,15 @@ final class UsageStore {
       guard source == sourceKey else { return }
       cache?.summaries[query.cacheKey] = CachedReport(report: report, date: .now)
       saveCache()
-      recordCursorQuota(report.cursorAccount)
+      recordAccountQuotas(report)
       archive.ingest(report, policy: metricsIngestPolicy(for: query.cacheKey))
       if archiveWritable {
         do {
           try MetricsArchiveFile(url: archiveURL).save(archive)
           errors["archive"] = nil
         } catch {
-          errors["archive"] = "Les métriques quotidiennes n'ont pas pu être enregistrées. Vérifie l'emplacement du fichier d'historique."
+          errors["archive"] =
+            "Les métriques quotidiennes n'ont pas pu être enregistrées. Vérifie l'emplacement du fichier d'historique."
         }
       }
       summaryErrors[query.cacheKey] = nil
@@ -478,9 +479,13 @@ final class UsageStore {
       })
   }
 
-  private func recordCursorQuota(_ account: CursorAccount?) {
-    guard let account, let reading = cursorQuotaReading(account) else { return }
-    quotaHistory.record(reading, source: quotaSourceKey)
+  private func recordAccountQuotas(_ report: SummaryReport) {
+    let readings = [
+      report.cursorAccount.flatMap { cursorQuotaReading($0) },
+      report.claudeAccount.flatMap { claudeSessionReading($0) },
+    ].compactMap { $0 }
+    guard !readings.isEmpty else { return }
+    for reading in readings { quotaHistory.record(reading, source: quotaSourceKey) }
     do {
       try QuotaHistoryFile(directory: cacheURL.deletingLastPathComponent()).save(quotaHistory)
       errors["quotaHistory"] = nil

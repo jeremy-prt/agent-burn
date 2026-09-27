@@ -274,7 +274,11 @@ struct QuotaChart: View {
   private var header: some View {
     Group {
       if compact {
-        cursorLabel
+        // La date au survol ne doit pas pousser le graphique : sa ligne est réservée.
+        ZStack(alignment: .leading) {
+          Text(" ").font(.system(size: 12)).hidden()
+          cursorLabel
+        }
       } else {
         HStack(alignment: .firstTextBaseline, spacing: 16) {
           headerSeries

@@ -75,7 +75,8 @@ crosses live used percent with API-equivalent spend for an average $ / %,
 and logged tokens with spend for tokens / $. The cycle
 chart starts the recorded line at that limit and can show the current cycle
 until reset, reset to today, today, the last 7 days, or the last 30 days. That
-picker does not change the spend period.
+picker does not change the spend period. Claude always charts the current week,
+next to a 5-hour session chart recorded by the same background collector.
 
 Metrics are stored under `~/Library/Application Support/Agent Burn/`.
 `metrics-history.json` keeps days providers stop returning. Days still present

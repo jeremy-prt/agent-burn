@@ -37,7 +37,7 @@ enum BurnTheme {
   static func color(for agent: String) -> Color {
     switch agent {
     case "codex": green
-    case "claude": .orange
+    case "claude", claudeSessionQuotaAgent: .orange
     case "cursor": .purple
     default: .blue
     }

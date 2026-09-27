@@ -272,28 +272,31 @@ func spendBucketTooltip(
 }
 
 enum QuotaMeterStyle {
-  case weekly, promotionalCredits
+  case weekly, session, promotionalCredits
   var title: String {
     switch self {
     case .weekly: "Quota hebdomadaire"
+    case .session: "Session · 5 h"
     case .promotionalCredits: "Crédits promotionnels"
     }
   }
   var remainingCaption: String {
     switch self {
     case .weekly: "Utilisé cette semaine"
+    case .session: "Utilisé sur la session"
     case .promotionalCredits: "Crédits utilisés"
     }
   }
   var resetTitle: String {
     switch self {
-    case .weekly: "Réinitialisation dans"
+    case .weekly, .session: "Réinitialisation dans"
     case .promotionalCredits: "Expiration dans"
     }
   }
   var resetHelp: String {
     switch self {
     case .weekly: "Temps restant dans la fenêtre de limite hebdomadaire."
+    case .session: "Temps restant avant la fin de la fenêtre de 5 heures."
     case .promotionalCredits: "Temps restant avant l'expiration des crédits promotionnels."
     }
   }
@@ -301,13 +304,15 @@ enum QuotaMeterStyle {
     switch self {
     case .weekly:
       "La limite hebdomadaire en cours a démarré à cette date. Le pourcentage utilisé est mesuré sur cette limite complète."
+    case .session:
+      "La fenêtre de 5 heures en cours a démarré à cette date. Le pourcentage utilisé est mesuré sur cette fenêtre."
     case .promotionalCredits:
       "Le pourcentage utilisé est mesuré sur la dotation de crédits promotionnels. La fenêtre court jusqu'à leur expiration."
     }
   }
   var chartResetLabel: String {
     switch self {
-    case .weekly: "Réinitialisation"
+    case .weekly, .session: "Réinitialisation"
     case .promotionalCredits: "Expiration"
     }
   }
@@ -450,7 +455,9 @@ func quotaChartScale(
   // L'échelle démarre au vrai début de la fenêtre de quota, pas au minuit qui
   // précède : sinon la courbe semble commencer un jour trop tard.
   let start = window.lowerBound
-  guard range != .today, let last = grid.last else { return start...window.upperBound }
+  guard quotaChartStepComponent(range: range, window: window) != .hour, let last = grid.last else {
+    return start...window.upperBound
+  }
   // Marge après le dernier libellé pour qu'il ne soit jamais tronqué au bord.
   return start...max(window.upperBound, last.addingTimeInterval(12 * 3600))
 }
@@ -458,8 +465,8 @@ func quotaChartScale(
 func quotaChartStepComponent(range: QuotaChartRange, window: ClosedRange<Date>)
   -> Calendar.Component
 {
-  if range == .today { return .hour }
   let days = window.upperBound.timeIntervalSince(window.lowerBound) / 86_400
+  if range == .today || days <= 1 { return .hour }
   return days > 45 ? .month : .day
 }
 
@@ -489,9 +496,10 @@ func quotaChartAxisDates(
 ) -> [Date] {
   let window = quotaChartWindow(range: range, forecast: forecast, now: now, calendar: calendar)
   let grid = quotaChartGridDates(range: range, forecast: forecast, now: now, calendar: calendar)
-  if range == .today {
+  if quotaChartStepComponent(range: range, window: window) == .hour {
+    let stride = grid.count > 8 ? 3 : 1
     return grid.enumerated().compactMap { offset, date in
-      offset % 3 == 0 || offset == grid.count - 1 ? date : nil
+      offset % stride == 0 || offset == grid.count - 1 ? date : nil
     }
   }
   let scale = quotaChartScale(range: range, forecast: forecast, now: now, calendar: calendar)
@@ -506,7 +514,8 @@ func quotaChartAxisDates(
 func quotaChartDayBands(
   range: QuotaChartRange, forecast: Forecast, now: Date, calendar: Calendar = .current
 ) -> [QuotaChartBand] {
-  guard range != .today else { return [] }
+  let window = quotaChartWindow(range: range, forecast: forecast, now: now, calendar: calendar)
+  guard quotaChartStepComponent(range: range, window: window) != .hour else { return [] }
   let grid = quotaChartGridDates(range: range, forecast: forecast, now: now, calendar: calendar)
   let scale = quotaChartScale(range: range, forecast: forecast, now: now, calendar: calendar)
   return grid.enumerated().map { index, start in
@@ -625,6 +634,9 @@ func quotaChartAxisLabel(
   calendar: Calendar = .current
 ) -> String {
   if range == .today { return date.formatted(.dateTime.hour()) }
+  if let first = marks.first, let last = marks.last, last.timeIntervalSince(first) < 86_400 {
+    return date.formatted(.dateTime.hour())
+  }
   if let first = marks.first, let last = marks.last,
     last.timeIntervalSince(first) > 45 * 86_400
   {
@@ -718,7 +730,9 @@ func quotaChartDrawnSamples(
   guard var previous = points.first else { return [] }
   var result = [previous]
   for sample in points.dropFirst() {
-    if sample.date.timeIntervalSince(previous.date) <= stepGap,
+    // Le premier point est souvent l'ancre à 100 % du début de fenêtre : on ne
+    // sait rien de ce qui précède le premier relevé, donc pas de marche.
+    if result.count > 1, sample.date.timeIntervalSince(previous.date) <= stepGap,
       abs(sample.remaining - previous.remaining) >= 0.05
     {
       result.append(QuotaSample(date: sample.date, remaining: previous.remaining))
@@ -872,6 +886,20 @@ func cursorMeterForecast(account: CursorAccount?, now: Date, stored: Forecast?) 
   if let stored { return stored }
   guard let account, let reading = cursorQuotaReading(account, now: now) else { return nil }
   return Forecast(window: reading.window, observedAt: reading.date, isLive: true)
+}
+
+func claudeSessionReading(_ account: ClaudeAccount, now: Date = .now) -> QuotaReading? {
+  guard let used = account.sessionUsedPercent, used.isFinite, (0...100).contains(used),
+    let resetMs = account.sessionResetsAtMs
+  else { return nil }
+  let duration: TimeInterval = 5 * 3600
+  let reset = Date(timeIntervalSince1970: resetMs / 1000)
+  let elapsed = (duration - reset.timeIntervalSince(now)) / duration * 100
+  guard reset > now, (0...100).contains(elapsed) else { return nil }
+  return QuotaReading(
+    agent: claudeSessionQuotaAgent, observedAt: now.timeIntervalSince1970 * 1000,
+    window: QuotaWindow(
+      windowMinutes: 300, usedPercent: used, elapsedPercent: elapsed, apiEquivalentSpent: 0))
 }
 
 func cursorQuotaReading(_ account: CursorAccount, now: Date = .now) -> QuotaReading? {
@@ -1084,7 +1112,6 @@ func tokens(_ value: UInt64) -> String {
   if number >= 1000 { return short(number / 1000, 1, " k") }
   return value.formatted(.number.locale(burnLocale))
 }
-
 
 /// Explique pourquoi les compteurs Claude en direct manquent, et quoi faire.
 func claudeAccountUnavailableMessage(_ code: String?) -> String {

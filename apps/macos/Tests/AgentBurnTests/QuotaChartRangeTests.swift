@@ -243,7 +243,7 @@ private func utcDate(year: Int = 2027, month: Int = 1, day: Int, hour: Int = 0) 
     sample(TimeInterval(step - 4) * 100, remaining: 100 - Double(step) * 10)
   }
   #expect(
-    quotaChartDrawnSamples(samples).map(\.remaining) == [100, 100, 90, 90, 80, 80, 70, 70, 60])
+    quotaChartDrawnSamples(samples).map(\.remaining) == [100, 90, 90, 80, 80, 70, 70, 60])
 }
 
 @Test func quotaChartDrawnSamplesKeepsADipOffTheBurnDown() {
@@ -252,7 +252,7 @@ private func utcDate(year: Int = 2027, month: Int = 1, day: Int, hour: Int = 0) 
     sample(-100, remaining: 50),
     sample(0, remaining: 60),
   ]
-  #expect(quotaChartDrawnSamples(samples).map(\.remaining) == [100, 100, 50, 50, 60])
+  #expect(quotaChartDrawnSamples(samples).map(\.remaining) == [100, 50, 50, 60])
 }
 
 @Test func quotaChartDrawnSamplesHoldsAPlateauUntilTheNextDrop() {
