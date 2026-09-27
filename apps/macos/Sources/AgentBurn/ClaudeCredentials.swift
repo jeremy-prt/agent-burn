@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 /// Accès aux identifiants OAuth de Claude Code, et renouvellement du jeton.
 ///
@@ -17,18 +16,8 @@ enum ClaudeCredentials {
     case noCredentials, noRefreshToken, refused(Int), malformed, notWritten
   }
 
-  /// Fichier où Agent Burn range le jeton qu'il a renouvelé lui-même.
-  ///
-  /// On n'écrit délibérément pas dans le trousseau : toute réécriture de
-  /// l'entrée efface sa liste de contrôle d'accès, et macOS se remet à demander
-  /// le mot de passe à chaque lecture.
-  static var sessionFile: URL {
-    FileManager.default.homeDirectoryForCurrentUser
-      .appendingPathComponent("Library/Application Support/Agent Burn/claude-session.json")
-  }
-
   static var expiresAt: Date? {
-    guard let oauth = stored()?["claudeAiOauth"] as? [String: Any],
+    guard let oauth = keychain()?["claudeAiOauth"] as? [String: Any],
       let milliseconds = oauth["expiresAt"] as? Double
     else { return nil }
     return Date(timeIntervalSince1970: milliseconds / 1000)
@@ -39,59 +28,40 @@ enum ClaudeCredentials {
     return expiresAt <= Date()
   }
 
-  /// Identifiants à utiliser pour renouveler.
-  ///
-  /// Toujours le fichier en premier, même si son jeton court est périmé :
-  /// Anthropic fait tourner le jeton de renouvellement, donc celui du trousseau
-  /// est mort dès le premier échange. Retomber dessus condamnait le
-  /// renouvellement à échouer exactement quand il devenait nécessaire.
-  static func credentialsForRenewal() -> [String: Any]? {
-    if let data = try? Data(contentsOf: sessionFile),
-      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-      let oauth = json["claudeAiOauth"] as? [String: Any],
-      let token = oauth["refreshToken"] as? String, !token.isEmpty
-    {
-      return json
-    }
-    return keychain()
-  }
-
-  /// Le fichier renouvelé s'il est encore valide, sinon le trousseau.
-  static func stored() -> [String: Any]? {
-    if let data = try? Data(contentsOf: sessionFile),
-      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-      let oauth = json["claudeAiOauth"] as? [String: Any],
-      let expires = oauth["expiresAt"] as? Double,
-      Date(timeIntervalSince1970: expires / 1000) > Date()
-    {
-      return json
-    }
-    return keychain()
-  }
-
+  /// Passe par `/usr/bin/security` plutôt que `SecItemCopyMatching` : l'entrée
+  /// n'accepte que la partition `apple-tool:`, qu'une app signée ad-hoc ne peut
+  /// pas rejoindre, d'où un mot de passe demandé à chaque lecture.
   private static func keychain() -> [String: Any]? {
-    let query: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: service,
-      kSecReturnData as String: true,
-      kSecMatchLimit as String: kSecMatchLimitOne,
-    ]
-    var item: CFTypeRef?
-    guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-      let data = item as? Data,
-      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else { return nil }
-    return json
+    guard let data = security(["find-generic-password", "-s", service, "-w"]) else { return nil }
+    return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
   }
 
+  /// Réécrit l'entrée de Claude Code, qui garde ainsi le jeton tourné : un
+  /// fichier à part laissait au trousseau un jeton de renouvellement mort.
+  /// Pas de `security -i` : il coupe les lignes vers 4 Ko et a déjà tronqué
+  /// l'entrée. La relecture vérifie que Claude Code retrouvera un JSON entier.
   private static func write(_ credentials: [String: Any]) throws {
-    let directory = sessionFile.deletingLastPathComponent()
-    try FileManager.default.createDirectory(
-      at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     let data = try JSONSerialization.data(withJSONObject: credentials)
-    try data.write(to: sessionFile, options: .atomic)
-    try? FileManager.default.setAttributes(
-      [.posixPermissions: 0o600], ofItemAtPath: sessionFile.path)
+    let hex = data.map { String(format: "%02x", $0) }.joined()
+    let arguments = ["add-generic-password", "-U", "-a", NSUserName(), "-s", service, "-X", hex]
+    guard security(arguments) != nil,
+      let written = keychain()?["claudeAiOauth"] as? [String: Any],
+      let expected = credentials["claudeAiOauth"] as? [String: Any],
+      written["accessToken"] as? String == expected["accessToken"] as? String
+    else { throw Failure.notWritten }
+  }
+
+  private static func security(_ arguments: [String]) -> Data? {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+    process.arguments = arguments
+    let output = Pipe()
+    process.standardOutput = output
+    process.standardError = FileHandle.nullDevice
+    guard (try? process.run()) != nil else { return nil }
+    let data = output.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    return process.terminationStatus == 0 ? data : nil
   }
 
   private struct Response: Decodable {
@@ -102,7 +72,7 @@ enum ClaudeCredentials {
 
   /// Échange le jeton de renouvellement contre un nouvel `accessToken`.
   @discardableResult static func renew() async throws -> Date {
-    guard var credentials = credentialsForRenewal(),
+    guard var credentials = keychain(),
       var oauth = credentials["claudeAiOauth"] as? [String: Any]
     else { throw Failure.noCredentials }
     guard let refreshToken = oauth["refreshToken"] as? String, !refreshToken.isEmpty else {
@@ -135,7 +105,7 @@ enum ClaudeCredentials {
     if let rotated = decoded.refresh_token, !rotated.isEmpty { oauth["refreshToken"] = rotated }
     credentials["claudeAiOauth"] = oauth
 
-    do { try write(credentials) } catch { throw Failure.notWritten }
+    try write(credentials)
     return expiresAt
   }
 

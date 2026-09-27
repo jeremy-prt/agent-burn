@@ -34,24 +34,23 @@ En cas de `429`, rien n'est perdu : l'historique déjà relevé reste affiché.
 `./build.sh` re-signe l'app en ad-hoc. Si le service launchd pointe sur une
 copie à l'ancienne signature, macOS le tue avec
 `SIGKILL (Code Signature Invalid)` et l'historique des quotas cesse de se
-remplir en silence. Travailler sur la copie installée dans `/Applications`
-évite ce cycle.
+remplir en silence. Après remplacement de l'app, il faut en général
+`launchctl kickstart` du service, puis quitter l'app, `launchctl bootout`, et
+la relancer pour que macOS accepte la nouvelle signature.
 
-## Ne jamais écrire dans le trousseau
+## Trousseau : toujours via `/usr/bin/security`
 
 L'`accessToken` de Claude Code ne vit que 8 h, le `refreshToken` un mois. Le
-bouton « Renouveler la session » échange le second contre un neuf via
-`https://platform.claude.com/v1/oauth/token`, avec un `User-Agent`
-`claude-code/…` : Cloudflare renvoie 429 à tout agent inconnu, et
+renouvellement passe par `https://platform.claude.com/v1/oauth/token`, avec un
+`User-Agent` `claude-code/…` : Cloudflare renvoie 429 à tout agent inconnu, et
 `console.anthropic.com` renvoie 404 depuis la migration.
 
-Le jeton renouvelé est écrit dans
-`~/Library/Application Support/Agent Burn/claude-session.json`, jamais dans le
-trousseau : réécrire l'entrée `Claude Code-credentials` efface sa liste de
-contrôle d'accès et macOS redemande le mot de passe à chaque lecture. Ordre de
-lecture côté CLI : ce fichier s'il est valide, puis le trousseau, puis
-`~/.claude/.credentials.json`.
+Lire et écrire l'entrée `Claude Code-credentials` uniquement via
+`/usr/bin/security`, jamais via `SecItem*` : l'entrée n'accepte que la
+partition `apple-tool:`, et une app signée ad-hoc déclenche une demande de mot
+de passe à chaque accès. Pas de `security -i` non plus : il coupe les lignes
+vers 4 Ko et a déjà tronqué l'entrée.
 
-Anthropic n'inclut un `refresh_token` dans sa réponse que s'il l'a fait
-tourner : son absence ne veut pas dire « plus de jeton », il faut conserver
-l'ancien.
+Anthropic fait tourner le `refreshToken` à chaque échange : le jeton renouvelé
+doit revenir dans le trousseau, sinon Claude Code garde un jeton mort et exige
+`claude /login`. Une réponse sans `refresh_token` veut dire « garder l'ancien ».

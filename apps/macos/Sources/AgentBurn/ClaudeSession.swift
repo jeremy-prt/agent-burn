@@ -49,7 +49,8 @@ import SwiftUI
         "Anthropic a répondu \(code). Réessaie dans un moment."
       }
     case .malformed: "Réponse inattendue d'Anthropic."
-    case .notWritten: "Le nouveau jeton n'a pas pu être écrit sur le disque."
+    case .notWritten:
+      "Le nouveau jeton n'a pas pu être écrit dans le trousseau. Lance `claude /login`."
     }
   }
 }
