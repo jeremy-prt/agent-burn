@@ -5,10 +5,9 @@ let package = Package(
   name: "AgentBurn",
   platforms: [.macOS(.v14)],
   products: [.executable(name: "AgentBurn", targets: ["AgentBurn"])],
-  dependencies: [.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6")],
   targets: [
     .executableTarget(
-      name: "AgentBurn", dependencies: [.product(name: "Sparkle", package: "Sparkle")],
+      name: "AgentBurn",
       resources: [.copy("Resources/AppIcon.icns"), .copy("Resources/Brands")]),
     .testTarget(name: "AgentBurnTests", dependencies: ["AgentBurn"]),
   ]

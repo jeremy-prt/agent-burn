@@ -16,11 +16,11 @@ sign in. Registration uses macOS Login Items; any required approval is shown in
 Settings. Disable the option to remove the login item. Menu-bar-only mode is
 respected at startup.
 
-Use Settings to configure sources and manage update checks. The menu-bar percentage can show Codex, Claude, or Cursor remaining
+Use Settings to configure sources. The menu-bar percentage can show Codex, Claude, or Cursor remaining
 quota; change it from the percentage menu or **Settings → Menu bar quota**. Enable **Settings → Appearance → Menu bar only** to hide the app from
 the Dock and Command-Tab. The preference survives restarts; the dashboard and
 Settings remain accessible from the menu-bar icon. Disable it to restore Dock
-visibility. The app menu also provides **Check for Updates…**.
+visibility.
 
 The official full-color logo is shared by Finder, the Dock, Command-Tab, window
 icons, and the menu bar, including when running through Swift Package Manager.
@@ -87,33 +87,19 @@ Old data absent from every source cannot be reconstructed. Model breakdowns
 reflect available source data, rather than invented historical precision.
 
 The app does not send usage to an Agent Burn service. Live CLI mode can contact
-provider endpoints and pricing sources. Sparkle contacts the public update feed
-and GitHub release assets. System profile submission is disabled.
+provider endpoints and pricing sources. The app never checks for updates on its
+own: new versions ship as DMG files on this fork's GitHub releases.
 
-## Open release process
+## Release process
 
 1. Increase `Config/version` using `major.minor.patch`. Never reuse a version.
-2. Test, commit and push the exact source to a branch on your release repository.
-3. Install both Rust targets with `rustup target add aarch64-apple-darwin x86_64-apple-darwin`.
-4. Set `AGENT_BURN_SIGN_IDENTITY` to your Developer ID Application certificate.
-5. Set `AGENT_BURN_SPARKLE_KEY_FILE` to a private base64 Ed25519 seed file.
-6. Set `AGENT_BURN_NOTARY_PROFILE` to a `notarytool` credential profile, or
-   authenticate the open-source `asc` CLI for notarization.
-7. Run `./release.sh` on the signing Mac.
+2. Commit and push the exact source to the `origin` repository.
+3. Run `./release.sh` (needs `rustup`, `create-dmg` and an authenticated `gh`).
 
-The script builds from `git archive HEAD`, makes universal binaries, signs the
-nested Sparkle helpers and app, notarizes, staples, verifies Gatekeeper, signs
-the update archive, and publishes checksums plus a versioned GitHub release.
-`macos` is a stable discovery channel independent of the npm CLI releases.
-Its appcast always points at immutable `macos-v*` versioned archives.
-The website's `/download` and `/appcast.xml` redirects follow that channel.
+The script builds universal binaries, packs `dist/Agent-Burn-<version>.dmg`
+and publishes it as the `macos-v<version>` release of `origin`. Without
+`AGENT_BURN_SIGN_IDENTITY` the app is signed ad-hoc and not notarized, so the
+first launch needs **System Settings → Privacy & Security → Open Anyway**.
 
-Private keys and certificates never belong in the repository. Back up the
-Sparkle seed securely: losing it prevents signing updates trusted by existing
-installations. `Config/sparkle-public-key` is intentionally public. Forks must
-create their own key and change the bundle identifier, feed URL, repository,
-and site URLs before distributing. Do not reuse this project's update identity.
-
-Sparkle is BSD licensed; its license ships in the application. Agent Burn is
-MIT licensed. Provider logos belong to their respective owners and identify
+Agent Burn is MIT licensed. Provider logos belong to their respective owners and identify
 supported integrations; no endorsement is implied.

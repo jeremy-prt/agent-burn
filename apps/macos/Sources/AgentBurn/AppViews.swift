@@ -157,7 +157,6 @@ struct SettingsView: View {
       ClaudeSessionSettings()
       CurrencySettings()
       QuotaSourceSettings()
-      UpdateSettings()
       Section("Source des données") {
         TextField("Exécutable du CLI", text: $store.customPath, prompt: Text("agent-burn intégré"))
           .help("Chemin absolu vers l'exécutable agent-burn natif")

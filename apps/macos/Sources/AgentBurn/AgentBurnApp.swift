@@ -33,7 +33,6 @@ struct AgentBurnApp: App {
     .defaultSize(width: 1060, height: 780)
     .windowStyle(.titleBar)
     .windowToolbarStyle(.unified)
-    .commands { UpdateCommands() }
     MenuBarExtra(isInserted: $appearance.menuBarVisible) {
       MenuPopover().environment(store).environment(\.locale, burnLocale)
     } label: {

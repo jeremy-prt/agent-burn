@@ -37,7 +37,7 @@ fi
 staging="$(mktemp -d "$PWD/dist-staging.XXXXXX")"
 trap 'trash "$staging"' EXIT
 app="$staging/Agent Burn.app"
-mkdir -p "$app/Contents/"{MacOS,Resources,Frameworks} dist
+mkdir -p "$app/Contents/"{MacOS,Resources} dist
 mkdir -p "$app/Contents/Library/LaunchAgents"
 cp Config/dev.melvynx.agent-burn.quota.plist "$app/Contents/Library/LaunchAgents/"
 if [[ "$release" == 1 ]]; then
@@ -50,12 +50,9 @@ else
   cp "$collector" "$app/Contents/MacOS/AgentBurnQuotaCollector"
 fi
 ditto "$bin/AgentBurn_AgentBurn.bundle" "$app/Contents/Resources/AgentBurn_AgentBurn.bundle"
-ditto "$bin/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
-install_name_tool -add_rpath '@executable_path/../Frameworks' "$app/Contents/MacOS/AgentBurn"
 # Finder and the running app use the exact same packaged artwork.
 cp "$app/Contents/Resources/AgentBurn_AgentBurn.bundle/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
 cp ../../LICENSE "$app/Contents/Resources/LICENSE.txt"
-cp .build/checkouts/Sparkle/LICENSE "$app/Contents/Resources/Sparkle-LICENSE.txt"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -72,28 +69,15 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
 <key>LSUIElement</key><false/>
 <key>NSHighResolutionCapable</key><true/>
-<key>SUFeedURL</key><string>https://agent-burn.melvynx.dev/appcast.xml</string>
-<key>SUPublicEDKey</key><string>$(tr -d '\n' < Config/sparkle-public-key)</string>
-<key>SUEnableAutomaticChecks</key><true/>
-<key>SUScheduledCheckInterval</key><integer>86400</integer>
-<key>SUSendProfileInfo</key><false/>
 </dict></plist>
 PLIST
 identity="${AGENT_BURN_SIGN_IDENTITY:--}"
 flags=(--force --sign "$identity")
-if [[ "$release" == 1 ]]; then
-  if [[ "$identity" == - ]]; then echo "Set AGENT_BURN_SIGN_IDENTITY to a Developer ID identity" >&2; exit 1; fi
+if [[ "$release" == 1 && "$identity" != - ]]; then
   flags+=(--options runtime --timestamp)
 fi
 codesign "${flags[@]}" "$app/Contents/Resources/agent-burn"
 codesign "${flags[@]}" "$app/Contents/MacOS/AgentBurnQuotaCollector"
-# Sign Sparkle's nested helpers before the enclosing framework and application.
-find "$app/Contents/Frameworks" -type f -perm +111 -print0 | while IFS= read -r -d '' executable; do
-  if file "$executable" | grep -q 'Mach-O'; then codesign "${flags[@]}" "$executable"; fi
-done
-find "$app/Contents/Frameworks" -depth \( -name '*.xpc' -o -name '*.app' -o -name '*.framework' \) -print0 | while IFS= read -r -d '' bundle; do
-  codesign "${flags[@]}" "$bundle"
-done
 codesign "${flags[@]}" "$app"
 codesign --verify --deep --strict "$app"
 if [[ -e 'dist/Agent Burn.app' ]]; then trash 'dist/Agent Burn.app'; fi
